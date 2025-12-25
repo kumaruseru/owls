@@ -335,7 +335,7 @@ npm run test
 
 ## 📄 License
 
-This project is proprietary software. All rights reserved.
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
 ---
 
@@ -344,8 +344,8 @@ This project is proprietary software. All rights reserved.
 <table>
   <tr>
     <td align="center">
-      <a href="https://github.com/yourusername">
-        <strong>Your Name</strong>
+      <a href="https://github.com/kumaruseru">
+        <strong>Trọng Nghĩa</strong>
       </a>
       <br />
       <sub>Lead Developer</sub>
