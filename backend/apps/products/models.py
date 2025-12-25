@@ -46,7 +46,7 @@ class Product(models.Model):
     
     name = models.CharField(max_length=255, verbose_name='Tên sản phẩm')
     slug = models.SlugField(max_length=255, unique=True)
-    description = models.TextField(verbose_name='Mô tả')
+    description = models.TextField(blank=True, verbose_name='Mô tả')
     short_description = models.CharField(max_length=500, blank=True, verbose_name='Mô tả ngắn')
     
     price = models.DecimalField(

@@ -1,5 +1,5 @@
-from rest_framework import generics, filters
-from rest_framework.permissions import AllowAny
+from rest_framework import generics, filters, permissions
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.db.models import Q
 
 from .models import Category, Product
@@ -8,6 +8,7 @@ from .serializers import (
     CategoryListSerializer,
     ProductListSerializer,
     ProductDetailSerializer,
+    ProductCreateSerializer
 )
 
 
@@ -33,15 +34,26 @@ class CategoryDetailView(generics.RetrieveAPIView):
         return Category.objects.filter(is_active=True)
 
 
-class ProductListView(generics.ListAPIView):
-    """List all active products with search and filter."""
+class ProductListView(generics.ListCreateAPIView):
+    """
+    List all active products with search and filter.
+    Create new product (Authenticated only).
+    """
     
-    permission_classes = (AllowAny,)
-    serializer_class = ProductListSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description', 'short_description']
     ordering_fields = ['price', 'created_at', 'name']
     ordering = ['-created_at']
+    
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [permissions.IsAuthenticated()]
+        return [permissions.AllowAny()]
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return ProductCreateSerializer
+        return ProductListSerializer
     
     def get_queryset(self):
         queryset = Product.objects.filter(is_active=True).select_related('category')

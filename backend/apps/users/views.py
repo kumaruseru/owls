@@ -277,3 +277,21 @@ class ThrottledTokenObtainPairView(TokenObtainPairView):
     """Token obtain view with email-based login and strict throttling."""
     serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [LoginAnonRateThrottle]
+
+
+from rest_framework import filters
+
+class UserListView(generics.ListAPIView):
+    """API view for listing all users (Admin only)."""
+    queryset = User.objects.all().order_by('-date_joined')
+    serializer_class = UserSerializer
+    permission_classes = (permissions.IsAdminUser,)
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['email', 'first_name', 'last_name', 'phone']
+
+
+class UserDetailAdminView(generics.RetrieveUpdateDestroyAPIView):
+    """API view for admin to retrieve, update, or delete a user."""
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = (permissions.IsAdminUser,)

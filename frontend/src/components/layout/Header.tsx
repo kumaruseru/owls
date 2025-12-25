@@ -8,13 +8,13 @@ import { useAuthStore } from '@/store/auth-store';
 import { useCartStore } from '@/store/cart-store';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from "@/lib/utils";
-import { Button } from '@/components/ui/button'; 
+import { Button } from '@/components/ui/button';
 
 export default function Header() {
     const [isScrolled, setIsScrolled] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const pathname = usePathname();
-    
+
     // Store hooks
     const { user, isAuthenticated } = useAuthStore();
     const { cart } = useCartStore();
@@ -35,19 +35,34 @@ export default function Header() {
     }, [pathname]);
 
     // --- CẬP NHẬT DANH SÁCH MENU TẠI ĐÂY ---
-    const navLinks = [
+    // --- CẬP NHẬT DANH SÁCH MENU TẠI ĐÂY ---
+    const isAdminRoute = pathname?.startsWith('/admin');
+
+    const customerLinks = [
         { href: '/products?category=laptop', label: 'Laptops' },
         { href: '/products?category=phone', label: 'Phones' },
         { href: '/products?category=audio', label: 'Audio' },
         { href: '/products?category=watch', label: 'Watches' },
         { href: '/about', label: 'About' },
+        ...(user?.is_staff ? [{ href: '/admin', label: 'Dashboard' }] : []),
     ];
+
+    const adminLinks = [
+        { href: '/admin', label: 'Overview' },
+        { href: '/admin/orders', label: 'Orders' },
+        { href: '/admin/products', label: 'Products' },
+        { href: '/admin/customers', label: 'Customers' },
+        { href: '/admin/settings', label: 'Settings' },
+        { href: '/', label: 'Exit Admin' },
+    ];
+
+    const navLinks = (isAuthenticated && user?.is_staff && isAdminRoute) ? adminLinks : customerLinks;
 
     return (
         <>
             <header className="fixed top-0 inset-x-0 z-50 flex justify-center pt-4 md:pt-6 pointer-events-none">
                 {/* Floating Capsule */}
-                <motion.div 
+                <motion.div
                     initial={{ y: -100, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
@@ -55,12 +70,12 @@ export default function Header() {
                         "pointer-events-auto flex items-center justify-between px-4 py-2 md:px-6 md:py-3 rounded-full border transition-all duration-500",
                         isScrolled
                             ? "bg-black/60 backdrop-blur-xl border-white/10 w-[92%] md:w-[750px] shadow-2xl shadow-purple-900/10" // Tăng độ rộng lên 750px để chứa đủ menu
-                            : "bg-transparent border-transparent w-[95%] md:w-[900px] translate-y-0" 
+                            : "bg-transparent border-transparent w-[95%] md:w-[900px] translate-y-0"
                     )}
                 >
                     {/* 1. Left: Hamburger (Mobile) & Logo */}
                     <div className="flex items-center gap-4">
-                        <button 
+                        <button
                             onClick={() => setIsMobileMenuOpen(true)}
                             className="md:hidden text-white/80 hover:text-white transition-colors"
                         >
@@ -75,13 +90,13 @@ export default function Header() {
                     {/* 2. Center: Desktop Nav */}
                     <nav className="hidden md:flex items-center gap-1">
                         {navLinks.map((link) => (
-                            <Link 
-                                key={link.href} 
+                            <Link
+                                key={link.href}
                                 href={link.href}
                                 className={cn(
                                     "px-4 py-1.5 text-sm font-medium rounded-full transition-all duration-300",
-                                    pathname === link.href 
-                                        ? "bg-white/10 text-white" 
+                                    pathname === link.href
+                                        ? "bg-white/10 text-white"
                                         : "text-white/60 hover:text-white hover:bg-white/5"
                                 )}
                             >
@@ -98,16 +113,16 @@ export default function Header() {
                         </button>
 
                         {/* Account */}
-                        <Link 
-                            href={isAuthenticated ? "/account" : "/login"} 
+                        <Link
+                            href={isAuthenticated ? "/account" : "/login"}
                             className="p-2 text-white/60 hover:text-white transition-colors hover:bg-white/5 rounded-full"
                         >
                             <User size={18} />
                         </Link>
 
                         {/* Cart */}
-                        <Link 
-                            href="/cart" 
+                        <Link
+                            href="/cart"
                             className="relative p-2 text-white/60 hover:text-white transition-colors hover:bg-white/5 rounded-full group"
                         >
                             <ShoppingBag size={18} className="group-hover:scale-110 transition-transform" />
@@ -142,7 +157,7 @@ export default function Header() {
                         >
                             <div className="flex justify-between items-center mb-10">
                                 <span className="font-display font-black text-2xl text-white">OWLS.</span>
-                                <button 
+                                <button
                                     onClick={() => setIsMobileMenuOpen(false)}
                                     className="p-2 bg-white/5 rounded-full text-white/60 hover:text-white"
                                 >
@@ -152,7 +167,7 @@ export default function Header() {
 
                             <nav className="flex flex-col gap-6">
                                 {navLinks.map((link, idx) => (
-                                    <Link 
+                                    <Link
                                         key={link.href}
                                         href={link.href}
                                         className="text-2xl font-light text-white/80 hover:text-purple-400 transition-colors"

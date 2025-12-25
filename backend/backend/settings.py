@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'storages',
     'drf_spectacular',
 
+    'apps.core',
     'apps.users',
     'apps.products',
     'apps.cart',

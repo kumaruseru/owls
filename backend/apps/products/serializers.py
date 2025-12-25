@@ -60,6 +60,32 @@ class ProductListSerializer(serializers.ModelSerializer):
         )
 
 
+class ProductCreateSerializer(serializers.ModelSerializer):
+    """Serializer for product creation."""
+    
+    image = serializers.ImageField(write_only=True, required=False)
+    
+    class Meta:
+        model = Product
+        fields = (
+            'id', 'name', 'description', 'price', 'stock', 
+            'category', 'is_active', 'image'
+        )
+        
+    def create(self, validated_data):
+        image_data = validated_data.pop('image', None)
+        product = Product.objects.create(**validated_data)
+        
+        if image_data:
+            ProductImage.objects.create(
+                product=product,
+                image=image_data,
+                is_primary=True
+            )
+            
+        return product
+
+
 class ProductDetailSerializer(serializers.ModelSerializer):
     """Serializer for product detail view."""
     

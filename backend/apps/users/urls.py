@@ -12,6 +12,10 @@ urlpatterns = [
     path('logout/', views.LogoutView.as_view(), name='logout'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     
+    # User Management (Admin)
+    path('', views.UserListView.as_view(), name='user_list'),
+    path('<int:pk>/', views.UserDetailAdminView.as_view(), name='user_detail'),
+    
     # Email Verification
     path('verify-email/<str:uidb64>/<str:token>/', views.VerifyEmailView.as_view(), name='verify_email'),
     path('resend-verification/', views.ResendVerificationEmailView.as_view(), name='resend_verification'),

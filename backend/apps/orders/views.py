@@ -15,6 +15,10 @@ from apps.products.models import Product
 from apps.payments.models import Payment
 from apps.payments.vnpay_service import VNPayService
 from apps.payments.momo_service import MoMoService
+from django.db.models import Sum, Count, Q
+from django.contrib.auth import get_user_model
+from django.utils import timezone
+from datetime import timedelta
 
 
 def get_client_ip(request):
@@ -227,4 +231,70 @@ class CancelOrderView(APIView):
         return Response({
             'message': 'Đã hủy đơn hàng.',
             'order': OrderDetailSerializer(order).data
+        })
+
+
+class AdminOrderListView(generics.ListAPIView):
+    """
+    API view for admins to list all orders.
+    """
+    permission_classes = (permissions.IsAdminUser,)
+    serializer_class = OrderListSerializer
+    
+    def get_queryset(self):
+        return Order.objects.all().order_by('-created_at')
+
+
+class AdminOrderDetailView(generics.RetrieveUpdateAPIView):
+    """
+    API view for admins to retrieve and update an order.
+    """
+    permission_classes = (permissions.IsAdminUser,)
+    serializer_class = OrderDetailSerializer
+    lookup_field = 'order_number'
+    
+    
+    def get_queryset(self):
+        return Order.objects.all()
+
+
+class AdminDashboardStatsView(APIView):
+    """
+    API view for admin dashboard statistics.
+    """
+    permission_classes = (permissions.IsAdminUser,)
+
+    def get(self, request):
+        User = get_user_model()
+        
+        # 1. Total Revenue
+        # Calculate revenue from:
+        # - Orders with payment_status='paid' (Online payments)
+        # - COD orders that are 'delivered' (Assumed collected)
+        revenue_query = Order.objects.filter(
+            Q(payment_status='paid') | 
+            (Q(payment_method='cod') & Q(status='delivered'))
+        ).aggregate(total_revenue=Sum('total'))
+        
+        total_revenue = revenue_query['total_revenue'] or 0
+        
+        # 2. Total Orders
+        orders_count = Order.objects.count()
+        
+        # 3. Total Customers
+        customers_count = User.objects.filter(is_staff=False).count()
+        
+        # 4. Pending Orders (Attention needed)
+        pending_count = Order.objects.filter(status='pending').count()
+
+        # 5. Recent Activity
+        recent_orders = Order.objects.all().order_by('-created_at')[:5]
+        recent_orders_data = OrderListSerializer(recent_orders, many=True).data
+        
+        return Response({
+            'total_revenue': total_revenue,
+            'orders_count': orders_count,
+            'customers_count': customers_count,
+            'pending_count': pending_count,
+            'recent_orders': recent_orders_data
         })

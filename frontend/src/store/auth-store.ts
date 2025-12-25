@@ -23,6 +23,7 @@ export interface User {
     full_address: string;
     date_joined: string;
     is_email_verified: boolean;
+    is_staff: boolean;
 }
 
 interface AuthState {

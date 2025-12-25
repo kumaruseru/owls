@@ -56,6 +56,7 @@
 - **Accessibility** — WCAG compliant components
 
 ### 🔧 Admin & Management
+- **Admin Dashboard** — Custom Next.js admin interface
 - **Django Admin** — Full content management system
 - **Product Management** — Categories, inventory, pricing
 - **Order Management** — Status updates, cancellation, refunds
@@ -84,6 +85,7 @@
 | **Django REST Framework** | 3.x | API endpoints |
 | **PostgreSQL** | 15+ | Database |
 | **Redis** | 7+ | Caching & sessions |
+| **Celery** | 5.x | Async task queue |
 | **Cloudflare R2** | - | Media storage (S3-compatible) |
 | **SimpleJWT** | - | JWT authentication |
 
@@ -163,7 +165,8 @@ npm run dev
 
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000/api/
-- **Admin Panel**: http://localhost:8000/admin/
+- **Admin Dashboard**: http://localhost:3000/admin
+- **Django Admin**: http://localhost:8000/admin/
 - **API Docs**: http://localhost:8000/api/docs/
 
 ---
