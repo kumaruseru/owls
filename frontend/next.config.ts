@@ -45,9 +45,8 @@ const nextConfig: NextConfig = {
 
   /* 3. Các tính năng thử nghiệm (React Compiler nằm ở đây) */
   experimental: {
-    // @ts-expect-error - reactCompiler is a valid experimental option but missing from types
-    reactCompiler: true,
-    // optimizePackageImports: ['lucide-react', 'framer-motion'], // Gợi ý: Tối ưu load thư viện
+    // reactCompiler: true, // properties 'reactCompiler' does not exist in type 'ExperimentalConfig'
+    optimizePackageImports: ['lucide-react', 'framer-motion'], // Gợi ý: Tối ưu load thư viện
   },
 };
 

@@ -1,7 +1,12 @@
 from rest_framework import serializers
-from .models import SiteConfiguration
+from .models import SiteConfig, TeamMember
 
-class SiteConfigurationSerializer(serializers.ModelSerializer):
+class SiteConfigSerializer(serializers.ModelSerializer):
     class Meta:
-        model = SiteConfiguration
+        model = SiteConfig
         fields = '__all__'
+
+class TeamMemberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TeamMember
+        fields = ['id', 'name', 'role', 'image', 'order', 'is_active']

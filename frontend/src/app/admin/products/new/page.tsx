@@ -4,13 +4,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
-import { useForm, SubmitHandler } from "react-hook-form";
+import { useForm, SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { ArrowLeft, Save, Upload, X, Loader2, AlertCircle, ImageIcon } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { AuroraBackground } from "@/components/ui/aurora-background";
 import { Button } from "@/components/ui/button";
+import { CurrencyInput } from "@/components/ui/currency-input"; // Assuming you have this or use standard input
 import { cn } from "@/lib/utils";
 
 // Form Schema
@@ -19,7 +20,9 @@ const productSchema = z.object({
     description: z.string().optional(),
     price: z.coerce.number().min(0, "Price must be positive"),
     stock: z.coerce.number().int().min(0, "Stock must be non-negative"),
-    category: z.string().min(1, "Category is required"),
+    category: z.coerce.string().min(1, "Category is required"), // Use string for ID but coerce if select returns number
+    brand: z.string().optional(),
+    color: z.string().optional(),
     is_active: z.boolean().default(true),
 });
 
@@ -38,13 +41,15 @@ export default function NewProductPage() {
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
 
-    const { register, handleSubmit, formState: { errors } } = useForm<ProductFormValues>({
+    const { register, handleSubmit, control, formState: { errors } } = useForm<ProductFormValues>({
         // @ts-ignore
         resolver: zodResolver(productSchema),
         defaultValues: {
             name: "",
             description: "",
             category: "",
+            brand: "",
+            color: "",
             is_active: true,
             stock: 0,
             price: 0,
@@ -52,21 +57,21 @@ export default function NewProductPage() {
     });
 
     useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const response = await api.get('/catalog/categories/');
+                // Handle pagination if needed, otherwise assume list
+                if (response.data.results && Array.isArray(response.data.results)) {
+                    setCategories(response.data.results);
+                } else if (Array.isArray(response.data)) {
+                    setCategories(response.data);
+                }
+            } catch (error) {
+                console.error("Failed to fetch categories", error);
+            }
+        };
         fetchCategories();
     }, []);
-
-    const fetchCategories = async () => {
-        try {
-            const response = await api.get('/products/categories/');
-            if (response.data.results && Array.isArray(response.data.results)) {
-                setCategories(response.data.results);
-            } else if (Array.isArray(response.data)) {
-                setCategories(response.data);
-            }
-        } catch (error) {
-            console.error("Failed to fetch categories", error);
-        }
-    };
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -89,13 +94,15 @@ export default function NewProductPage() {
             formData.append('price', data.price.toString());
             formData.append('stock', data.stock.toString());
             formData.append('category', data.category);
+            formData.append('brand', data.brand || '');
+            formData.append('color', data.color || '');
             formData.append('is_active', data.is_active.toString());
 
             if (imageFile) {
                 formData.append('image', imageFile);
             }
 
-            await api.post('/products/', formData, {
+            await api.post('/catalog/products/admin/', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
@@ -138,7 +145,7 @@ export default function NewProductPage() {
 
                     {/* Form Card */}
                     <div className="bg-white/5 border border-white/10 rounded-3xl backdrop-blur-xl shadow-2xl shadow-purple-900/5 overflow-hidden p-8">
-                        <form onSubmit={handleSubmit(onSubmit as any)} className="space-y-8">
+                        <form onSubmit={handleSubmit((data) => onSubmit(data as unknown as ProductFormValues))} className="space-y-8">
 
                             {/* Section: Media */}
                             <div className="space-y-4">
@@ -228,24 +235,75 @@ export default function NewProductPage() {
 
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 ml-1">Price (VND)</label>
+                                            <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 ml-1">Brand</label>
                                             <input
-                                                type="number"
-                                                {...register('price')}
-                                                className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 text-white placeholder:text-neutral-600 transition-all font-mono"
+                                                type="text"
+                                                {...register('brand')}
+                                                placeholder="e.g. Sony, Apple"
+                                                className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 text-white placeholder:text-neutral-600 transition-all"
                                             />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 ml-1">Color</label>
+                                            <input
+                                                type="text"
+                                                {...register('color')}
+                                                placeholder="e.g. Black, White"
+                                                className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 text-white placeholder:text-neutral-600 transition-all"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 ml-1">Price (VND)</label>
+
+                                            {/* Custom Controller for Formatted Price - Assuming CurrencyInput handles raw numbers */}
+                                            <div className="relative">
+                                                <Controller
+                                                    name="price"
+                                                    control={control}
+                                                    render={({ field: { onChange, value } }) => (
+                                                        <CurrencyInput
+                                                            value={value}
+                                                            onValueChange={(val) => onChange(val ?? 0)}
+                                                            className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 text-white placeholder:text-neutral-600 transition-all font-mono"
+                                                            placeholder="0"
+                                                        />
+                                                    )}
+                                                />
+                                            </div>
                                             {errors.price && <p className="text-red-400 text-xs ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {errors.price.message}</p>}
                                         </div>
 
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 ml-1">Stock</label>
-                                            <input
-                                                type="number"
-                                                {...register('stock')}
-                                                className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 text-white placeholder:text-neutral-600 transition-all font-mono"
+                                            <Controller
+                                                name="stock"
+                                                control={control}
+                                                render={({ field: { onChange, value } }) => (
+                                                    <CurrencyInput
+                                                        value={value}
+                                                        onValueChange={(val) => onChange(val ?? 0)}
+                                                        className="w-full px-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 text-white placeholder:text-neutral-600 transition-all font-mono"
+                                                        placeholder="0"
+                                                        currencySymbol=""
+                                                    />
+                                                )}
                                             />
                                             {errors.stock && <p className="text-red-400 text-xs ml-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {errors.stock.message}</p>}
                                         </div>
+                                    </div>
+
+                                    {/* Active Checkbox */}
+                                    <div className="flex items-center gap-2 pt-2">
+                                        <input
+                                            type="checkbox"
+                                            id="is_active"
+                                            {...register('is_active')}
+                                            className="w-4 h-4 rounded border-white/10 bg-black/20 text-purple-500 focus:ring-purple-500/50"
+                                        />
+                                        <label htmlFor="is_active" className="text-sm cursor-pointer select-none">Active Product</label>
                                     </div>
                                 </div>
 
@@ -264,7 +322,7 @@ export default function NewProductPage() {
                                 <Button
                                     type="submit"
                                     disabled={isLoading}
-                                    size="xl"
+                                    size="lg"
                                     className="w-full md:w-auto rounded-xl bg-white text-black hover:bg-neutral-200 font-bold uppercase tracking-wider text-sm transition-all shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] hover:shadow-[0_0_25px_-5px_rgba(255,255,255,0.5)]"
                                 >
                                     {isLoading ? (

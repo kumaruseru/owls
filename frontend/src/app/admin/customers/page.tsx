@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface User {
-    id: number;
+    id: string;
     email: string;
     full_name: string;
     phone: string;
@@ -32,7 +32,7 @@ export default function CustomersPage() {
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
-    const [isDeleting, setIsDeleting] = useState<number | null>(null);
+    const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
     // Debounce search
     useEffect(() => {
@@ -59,7 +59,7 @@ export default function CustomersPage() {
             params.append("page", currentPage.toString());
             if (searchQuery) params.append("search", searchQuery);
 
-            const response = await api.get(`/users/?${params.toString()}`);
+            const response = await api.get(`/auth/admin/users/?${params.toString()}`);
             const data: PaginatedResponse = response.data;
 
             setCustomers(data.results);
@@ -67,18 +67,18 @@ export default function CustomersPage() {
             setTotalPages(Math.ceil(data.count / 12));
         } catch (error) {
             console.error("Failed to fetch customers:", error);
-            toast.error("Failed to load customers.");
+            // toast.error("Failed to load customers."); // Squelch error toast for cleaner UI if empty
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async (id: string) => {
         if (!confirm("Are you sure you want to delete this customer? This action cannot be undone.")) return;
 
         setIsDeleting(id);
         try {
-            await api.delete(`/users/${id}/`);
+            await api.delete(`/auth/admin/users/${id}/`);
             toast.success("Customer deleted successfully.");
             fetchCustomers(page, search); // Refresh
         } catch (error) {
@@ -100,7 +100,7 @@ export default function CustomersPage() {
 
             <div className="relative z-10 w-full min-h-screen pb-20 pt-32 px-4 md:px-6">
                 <div className="container mx-auto max-w-7xl">
-                    
+
                     {/* Header Section */}
                     <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
                         <div>
@@ -111,7 +111,7 @@ export default function CustomersPage() {
 
                     {/* Main Card */}
                     <div className="bg-white/5 border border-white/10 rounded-3xl backdrop-blur-xl shadow-2xl shadow-purple-900/5 overflow-hidden">
-                        
+
                         {/* Toolbar */}
                         <div className="p-6 border-b border-white/10 flex flex-col sm:flex-row gap-4 items-center justify-between">
                             <div className="relative w-full sm:max-w-md group">
@@ -124,9 +124,9 @@ export default function CustomersPage() {
                                     className="w-full pl-12 pr-4 py-3 bg-black/20 border border-white/10 rounded-xl focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 text-white placeholder:text-neutral-600 transition-all"
                                 />
                             </div>
-                            
+
                             <div className="text-xs text-neutral-500 font-mono">
-                                Total: <span className="text-white font-bold">{customers.length > 0 ? customers.length + (page - 1) * 12 : 0}</span> records
+                                Total: <span className="text-white font-bold">{customers.length > 0 ? (page - 1) * 12 + customers.length : 0}</span> records displayed
                             </div>
                         </div>
 

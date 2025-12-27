@@ -51,12 +51,8 @@ export interface ButtonProps
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ({ className, variant, size, asChild = false, isLoading, leftIcon, rightIcon, children, ...props }, ref) => {
-        const Comp = asChild ? Slot : "button"
-
-        // If it's a motion button (for tap effects), wrap it. 
-        // Simplified for now to standard button but keeping structure ready for motion
-
         if (asChild) {
+            const Comp = Slot
             return (
                 <Comp
                     className={cn(buttonVariants({ variant, size, className }))}
@@ -69,17 +65,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         }
 
         return (
-            <Comp
+            <motion.button
                 className={cn(buttonVariants({ variant, size, className }))}
                 ref={ref}
                 disabled={isLoading || props.disabled}
-                {...props}
+                whileTap={{ scale: 0.95 }}
+                {...(props as HTMLMotionProps<"button">)}
             >
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {!isLoading && leftIcon && <span className="mr-2">{leftIcon}</span>}
                 {children}
                 {!isLoading && rightIcon && <span className="ml-2">{rightIcon}</span>}
-            </Comp>
+            </motion.button>
         )
     }
 )

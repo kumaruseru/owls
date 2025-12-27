@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
 import { formatPrice, formatDate, cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ import {
 import toast from "react-hot-toast";
 import { AuroraBackground } from "@/components/ui/aurora-background";
 import { Button } from "@/components/ui/button";
+import React from "react";
 
 interface OrderDetail {
     id: string;
@@ -72,24 +73,27 @@ const StatusBadge = ({ status, type = 'order' }: { status: string; type?: 'order
     );
 };
 
-export default function AdminOrderDetailPage() {
-    const params = useParams();
+export default function AdminOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
+    const resolvedParams = React.use(params);
+    const orderId = resolvedParams.id;
+
     const [order, setOrder] = useState<OrderDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [updating, setUpdating] = useState(false);
 
     useEffect(() => {
-        if (params?.id) {
-            fetchOrder(params.id as string);
+        if (orderId) {
+            fetchOrder(orderId);
         }
-    }, [params?.id]);
+    }, [orderId]);
 
     const fetchOrder = async (id: string) => {
         try {
-            const { data } = await api.get(`/orders/admin/${id}/`);
+            const { data } = await api.get(`/admin/orders/${id}/`);
             setOrder(data);
         } catch (error) {
+            console.error("Fetch order error:", error);
             toast.error("Could not fetch order details");
             router.push("/admin/orders");
         } finally {
@@ -101,14 +105,17 @@ export default function AdminOrderDetailPage() {
         if (!order) return;
         setUpdating(true);
         try {
-            await api.patch(`/orders/admin/${order.order_number}/`, {
+            // Use the status endpoint which triggers OrderService.update_order_status()
+            // This will send confirmation email and create GHN shipping order for COD
+            await api.post(`/admin/orders/${order.order_number}/status/`, {
                 status: newStatus
             });
             toast.success(`Order updated to ${newStatus}`);
             fetchOrder(order.order_number);
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast.error("Failed to update status");
+            const errorMsg = error.response?.data?.error || "Failed to update status";
+            toast.error(errorMsg);
         } finally {
             setUpdating(false);
         }
@@ -135,7 +142,7 @@ export default function AdminOrderDetailPage() {
 
             <div className="relative z-10 w-full min-h-screen pb-20 pt-32 px-4 md:px-6">
                 <div className="container mx-auto max-w-7xl">
-                    
+
                     {/* Header */}
                     <div className="mb-8">
                         <Link
@@ -145,7 +152,7 @@ export default function AdminOrderDetailPage() {
                             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                             Back to Orders
                         </Link>
-                        
+
                         <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
                             <div>
                                 <div className="flex items-center gap-4 mb-2">
@@ -167,7 +174,7 @@ export default function AdminOrderDetailPage() {
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        
+
                         {/* Main Content: Order Items */}
                         <div className="lg:col-span-2 space-y-8">
                             <div className="bg-white/5 border border-white/10 rounded-3xl overflow-hidden backdrop-blur-xl shadow-2xl shadow-purple-900/5">
@@ -177,7 +184,7 @@ export default function AdminOrderDetailPage() {
                                     </div>
                                     <h2 className="font-bold text-lg text-white">Order Items</h2>
                                 </div>
-                                
+
                                 <div className="divide-y divide-white/5">
                                     {order.items.map((item) => (
                                         <div key={item.id} className="p-6 flex items-center gap-6 hover:bg-white/[0.02] transition-colors">
@@ -197,12 +204,12 @@ export default function AdminOrderDetailPage() {
                                                     x{item.quantity}
                                                 </div>
                                             </div>
-                                            
+
                                             <div className="flex-1 min-w-0">
                                                 <h3 className="font-bold text-white text-lg truncate mb-1">{item.product_name}</h3>
                                                 <p className="text-sm text-zinc-400 font-mono">ID: {item.id}</p>
                                             </div>
-                                            
+
                                             <div className="text-right">
                                                 <p className="font-bold text-white text-lg">{formatPrice(item.subtotal)}</p>
                                                 <p className="text-xs text-zinc-500">{formatPrice(item.price)} each</p>
@@ -236,51 +243,72 @@ export default function AdminOrderDetailPage() {
 
                         {/* Sidebar */}
                         <div className="space-y-6">
-                            
+
                             {/* Actions Card */}
                             <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl">
                                 <h3 className="font-bold text-white mb-4 text-sm uppercase tracking-widest text-zinc-500">Order Actions</h3>
                                 <div className="space-y-3">
                                     {order.status === 'pending' && (
                                         <>
-                                            <Button
-                                                onClick={() => updateStatus('confirmed')}
-                                                disabled={updating}
-                                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-12 font-bold"
-                                            >
-                                                {updating ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                                                Confirm Order
-                                            </Button>
+                                            {order.payment_status === 'paid' ? (
+                                                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+                                                    <p className="text-emerald-400 font-bold mb-1">Order Paid</p>
+                                                    <p className="text-zinc-400 text-xs">Waiting for auto-confirmation or system processing.</p>
+                                                    <Button
+                                                        onClick={() => updateStatus('confirmed')}
+                                                        disabled={updating}
+                                                        variant="ghost"
+                                                        className="mt-2 text-xs text-indigo-400 hover:text-indigo-300 h-auto py-1"
+                                                    >
+                                                        Force Confirm
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <Button
+                                                    onClick={() => updateStatus('confirmed')}
+                                                    disabled={updating}
+                                                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-12 font-bold"
+                                                >
+                                                    {updating ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                                                    Confirm Order
+                                                </Button>
+                                            )}
+
                                             <Button
                                                 onClick={() => updateStatus('cancelled')}
                                                 disabled={updating}
                                                 variant="outline"
-                                                className="w-full border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 rounded-xl h-12 bg-transparent"
+                                                className="w-full border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 rounded-xl h-12 bg-transparent mt-2"
                                             >
                                                 <XCircle className="w-4 h-4 mr-2" />
                                                 Cancel Order
                                             </Button>
                                         </>
                                     )}
-                                    {order.status === 'confirmed' && (
-                                        <Button
-                                            onClick={() => updateStatus('shipping')}
-                                            disabled={updating}
-                                            className="w-full bg-purple-600 hover:bg-purple-700 text-white rounded-xl h-12 font-bold"
-                                        >
-                                            {updating ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <Truck className="w-4 h-4 mr-2" />}
-                                            Ship Order
-                                        </Button>
-                                    )}
-                                    {order.status === 'shipping' && (
-                                        <Button
-                                            onClick={() => updateStatus('delivered')}
-                                            disabled={updating}
-                                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-12 font-bold"
-                                        >
-                                            {updating ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <Box className="w-4 h-4 mr-2" />}
-                                            Mark Delivered
-                                        </Button>
+                                    {/* Unified Shipping/Delivery Step */}
+                                    {(order.status === 'confirmed' || order.status === 'shipping') && (
+                                        <div className="space-y-3">
+                                            <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                                                <div className="flex items-center gap-3 mb-2">
+                                                    <div className="p-2 bg-blue-500/20 rounded-lg">
+                                                        <Truck className="w-4 h-4 text-blue-400" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-blue-400 font-bold text-sm">Shipping in Progress</p>
+                                                        <p className="text-zinc-400 text-xs">Handled by GHN</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <Button
+                                                onClick={() => updateStatus('delivered')}
+                                                disabled={updating}
+                                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-12 font-bold"
+                                            >
+                                                {updating ? <Loader2 className="animate-spin w-4 h-4 mr-2" /> : <Box className="w-4 h-4 mr-2" />}
+                                                Mark Delivered
+                                            </Button>
+                                        </div>
                                     )}
                                     {['delivered', 'cancelled', 'refunded'].includes(order.status) && (
                                         <div className="p-4 rounded-xl bg-white/5 border border-white/5 text-center">

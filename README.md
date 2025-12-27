@@ -2,7 +2,7 @@
   <img src="https://cdn.owls.asia/static/logo.png" alt="OWLS Logo" width="120" height="120" />
 </p>
 
-<h1 align="center">🦉 OWLS</h1>
+<h1 align="center">OWLS</h1>
 
 <p align="center">
   <strong>Premium E-Commerce Platform</strong><br>
@@ -177,24 +177,28 @@ npm run dev
 owls/
 ├── backend/                    # Django backend
 │   ├── apps/
-│   │   ├── users/             # Authentication & profiles
-│   │   ├── products/          # Product catalog
-│   │   ├── cart/              # Shopping cart
-│   │   ├── orders/            # Order management
-│   │   ├── payments/          # Payment integration
-│   │   ├── reviews/           # Product reviews
-│   │   └── utils/             # Shared utilities
+│   │   ├── identity/          # Authentication, profiles & 2FA
+│   │   ├── catalog/           # Product catalog & categories
+│   │   ├── sales/             # Cart, orders & checkout
+│   │   ├── payments/          # VNPay, MoMo integration
+│   │   └── shipping/          # GHN shipping integration
 │   ├── backend/               # Django settings
 │   └── manage.py
 │
 ├── frontend/                   # Next.js frontend
 │   ├── src/
 │   │   ├── app/               # App Router pages
+│   │   │   ├── admin/         # Admin dashboard
+│   │   │   ├── account/       # User account pages
+│   │   │   ├── products/      # Product listing & details
+│   │   │   ├── cart/          # Shopping cart
+│   │   │   └── checkout/      # Checkout flow
 │   │   ├── components/        # React components
-│   │   │   ├── ui/            # Base UI components
-│   │   │   └── layout/        # Layout components
-│   │   ├── lib/               # Utilities & API client
-│   │   └── store/             # Zustand stores
+│   │   │   ├── ui/            # Base UI (shadcn/ui)
+│   │   │   └── layout/        # Header, Footer, etc.
+│   │   ├── lib/               # API client & utilities
+│   │   ├── store/             # Zustand stores
+│   │   └── types/             # TypeScript types
 │   ├── public/                # Static assets
 │   └── package.json
 │
@@ -205,47 +209,56 @@ owls/
 
 ## 🔌 API Documentation
 
-### Authentication
+### Authentication (Identity)
 
 ```http
-POST /api/users/register/      # Register new user
-POST /api/users/login/         # Login & get tokens
-POST /api/users/token/refresh/ # Refresh access token
-POST /api/users/logout/        # Logout & blacklist token
+POST /api/auth/register/         # Register new user
+POST /api/auth/login/            # Login & get tokens
+POST /api/auth/token/refresh/    # Refresh access token
+POST /api/auth/logout/           # Logout & blacklist token
+GET  /api/auth/me/               # Get current user
+PUT  /api/auth/me/               # Update profile
+POST /api/auth/2fa/setup/        # Setup 2FA
+POST /api/auth/2fa/verify/       # Verify 2FA code
 ```
 
-### Products
+### Catalog
 
 ```http
-GET  /api/products/            # List products (filterable)
-GET  /api/products/:slug/      # Product details
-GET  /api/categories/          # List categories
+GET  /api/catalog/products/      # List products (filterable)
+GET  /api/catalog/products/:slug/ # Product details
+GET  /api/catalog/categories/    # List categories
+GET  /api/catalog/filters/       # Get available filters
 ```
 
-### Cart
+### Sales (Cart & Orders)
 
 ```http
-GET  /api/cart/                # Get cart
-POST /api/cart/add/            # Add item to cart
-POST /api/cart/update/         # Update item quantity
-POST /api/cart/remove/         # Remove item
-POST /api/cart/clear/          # Clear cart
-```
-
-### Orders
-
-```http
-POST /api/orders/checkout/     # Create order
-GET  /api/orders/              # List user orders
-GET  /api/orders/:number/      # Order details
-POST /api/orders/:number/cancel/ # Cancel order
+GET  /api/sales/cart/            # Get cart
+POST /api/sales/cart/add/        # Add item to cart
+POST /api/sales/cart/update/     # Update item quantity
+POST /api/sales/cart/remove/     # Remove item
+POST /api/sales/cart/clear/      # Clear cart
+POST /api/sales/checkout/        # Create order
+GET  /api/sales/orders/          # List user orders
+GET  /api/sales/orders/:number/  # Order details
+POST /api/sales/orders/:number/cancel/ # Cancel order
 ```
 
 ### Payments
 
 ```http
-GET  /api/payments/vnpay/return/  # VNPay callback
-POST /api/payments/momo/webhook/  # MoMo IPN
+GET  /api/payments/vnpay/return/   # VNPay callback
+POST /api/payments/momo/webhook/   # MoMo IPN
+```
+
+### Shipping (GHN)
+
+```http
+GET  /api/shipping/provinces/      # Get provinces
+GET  /api/shipping/districts/      # Get districts by province
+GET  /api/shipping/wards/          # Get wards by district
+POST /api/shipping/calculate-fee/  # Calculate shipping fee
 ```
 
 > 📖 Full API documentation available at `/api/docs/` (Swagger UI)

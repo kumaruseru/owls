@@ -1,5 +1,5 @@
 import axios from 'axios';
-import Cookies from 'js-cookie';
+import Cookies from '../../node_modules/@types/js-cookie';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
@@ -25,43 +25,68 @@ api.interceptors.request.use(
     }
 );
 
-// Response interceptor to handle token refresh
+// Token refresh queue handling
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+const subscribeTokenRefresh = (cb: (token: string) => void) => {
+    refreshSubscribers.push(cb);
+};
+
+const onRefreshed = (token: string) => {
+    refreshSubscribers.forEach((cb) => cb(token));
+    refreshSubscribers = [];
+};
+
 api.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
 
-        // If 401 and we haven't tried to refresh yet
         if (error.response?.status === 401 && !originalRequest._retry) {
+            if (isRefreshing) {
+                return new Promise((resolve) => {
+                    subscribeTokenRefresh((token) => {
+                        originalRequest.headers.Authorization = `Bearer ${token}`;
+                        resolve(api(originalRequest));
+                    });
+                });
+            }
+
             originalRequest._retry = true;
+            isRefreshing = true;
 
             try {
                 const refreshToken = Cookies.get('refresh_token');
+
                 if (refreshToken) {
-                    // Corrected endpoint from /auth/token/refresh/ to /users/token/refresh/
-                    const response = await axios.post(`${API_URL}/users/token/refresh/`, {
+                    const response = await axios.post(`${API_URL}/auth/token/refresh/`, {
                         refresh: refreshToken,
                     });
 
                     const { access } = response.data;
-                    Cookies.set('access_token', access, { expires: 1 }); // 1 day
+                    Cookies.set('access_token', access, { expires: 1 / 24, sameSite: 'Lax', path: '/' }); // 1 hour
 
+                    api.defaults.headers.common['Authorization'] = `Bearer ${access}`;
                     originalRequest.headers.Authorization = `Bearer ${access}`;
+
+                    onRefreshed(access);
                     return api(originalRequest);
                 } else {
-                    // No refresh token available, force logout
                     throw new Error('No refresh token');
                 }
             } catch (refreshError) {
-                // Clear tokens on refresh failure or missing token
-                Cookies.remove('access_token');
-                Cookies.remove('refresh_token');
+                Cookies.remove('access_token', { path: '/' });
+                Cookies.remove('refresh_token', { path: '/' });
 
+                // Force global logout via event (listened by auth-store)
                 if (typeof window !== 'undefined') {
-                    // Clear Zustand Persist Storage to ensure UI updates
-                    localStorage.removeItem('auth-storage');
-                    window.location.href = '/login';
+                    window.dispatchEvent(new Event('auth:logout'));
                 }
+
+                return Promise.reject(refreshError);
+            } finally {
+                isRefreshing = false;
             }
         }
 

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
 import { AuroraBackground } from "@/components/ui/aurora-background";
-import { Sidebar } from "@/components/admin/Sidebar";
 import { Loader2 } from "lucide-react";
 
 export default function AdminLayout({
@@ -51,13 +50,8 @@ export default function AdminLayout({
                 </AuroraBackground>
             </div>
 
-            {/* Sidebar Area - REMOVED per user request */}
-
             {/* Main Content Area */}
             <main className="relative z-10 min-h-screen transition-all duration-300">
-                {/* Lưu ý: Các page con (Dashboard, Products...) đã có padding/container riêng 
-                   nên ở đây ta chỉ cần wrapper cơ bản. 
-                */}
                 <div className="w-full h-full">
                     {children}
                 </div>

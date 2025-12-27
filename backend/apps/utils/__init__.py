@@ -1,1 +1,3 @@
-# Utils package for OWLS e-commerce platform
+from .security import SensitiveDataFilter
+
+__all__ = ['SensitiveDataFilter']

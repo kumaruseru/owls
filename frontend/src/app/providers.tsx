@@ -1,12 +1,11 @@
 'use client';
 
 import { ReactLenis } from '@studio-freight/react-lenis'
-
 import { Toaster } from 'react-hot-toast';
 
 export function Providers({ children }: { children: any }) {
     return (
-        <ReactLenis root options={{ lerp: 0.1, duration: 1.5, smoothWheel: true }}>
+        <ReactLenis root options={{ lerp: 0.1, duration: 1.2, smoothWheel: true }}>
             {children}
             <Toaster
                 position="top-center"

@@ -4,7 +4,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import Cookies from 'js-cookie';
+import Cookies from '../../node_modules/@types/js-cookie';
 import api from '@/lib/api';
 
 export interface User {
@@ -19,24 +19,33 @@ export interface User {
     city: string;
     district: string;
     ward: string;
+    // GHN Address IDs for sync
+    province_id: number | null;
+    district_id: number | null;
+    ward_code: string | null;
     full_name: string;
     full_address: string;
     date_joined: string;
     is_email_verified: boolean;
     is_staff: boolean;
+    is_2fa_enabled: boolean;
 }
 
 interface AuthState {
     user: User | null;
     isAuthenticated: boolean;
     isLoading: boolean;
+    hasHydrated: boolean;
 
-    login: (email: string, password: string) => Promise<void>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    login: (email: string, password: string) => Promise<any>;
+    verify2FA: (tempToken: string, code: string) => Promise<void>;
     register: (data: RegisterData) => Promise<void>;
     logout: () => Promise<void>;
     fetchProfile: () => Promise<void>;
     updateProfile: (data: Partial<User>) => Promise<void>;
     setUser: (user: User | null) => void;
+    setHasHydrated: (hydrated: boolean) => void;
 }
 
 interface RegisterData {
@@ -55,17 +64,42 @@ export const useAuthStore = create<AuthState>()(
             user: null,
             isAuthenticated: false,
             isLoading: false,
+            hasHydrated: false,
+
+            setHasHydrated: (hydrated: boolean) => {
+                set({ hasHydrated: hydrated });
+            },
 
             login: async (email: string, password: string) => {
                 set({ isLoading: true });
                 try {
-                    const response = await api.post('/users/login/', { email, password });
+                    const response = await api.post('/auth/login/', { email, password });
+
+                    if (response.data.requires_2fa) {
+                        return response.data;
+                    }
+
+                    const { access, refresh } = response.data;
+                    Cookies.set('access_token', access, { expires: 1 / 24, sameSite: 'Lax', path: '/' }); // 1 hour
+                    Cookies.set('refresh_token', refresh, { expires: 7, sameSite: 'Lax', path: '/' }); // 7 days
+
+                    await get().fetchProfile();
+                    set({ isAuthenticated: true });
+                    return response.data;
+                } finally {
+                    set({ isLoading: false });
+                }
+            },
+
+            verify2FA: async (tempToken: string, code: string) => {
+                set({ isLoading: true });
+                try {
+                    const response = await api.post('/auth/login/2fa/', { temp_token: tempToken, code });
                     const { access, refresh } = response.data;
 
-                    Cookies.set('access_token', access, { expires: 1 / 24 }); // 1 hour
-                    Cookies.set('refresh_token', refresh, { expires: 7 }); // 7 days
+                    Cookies.set('access_token', access, { expires: 1 / 24, sameSite: 'Lax', path: '/' });
+                    Cookies.set('refresh_token', refresh, { expires: 7, sameSite: 'Lax', path: '/' });
 
-                    // Fetch user profile
                     await get().fetchProfile();
                     set({ isAuthenticated: true });
                 } finally {
@@ -76,11 +110,11 @@ export const useAuthStore = create<AuthState>()(
             register: async (data: RegisterData) => {
                 set({ isLoading: true });
                 try {
-                    const response = await api.post('/users/register/', data);
-                    const { tokens, user } = response.data;
+                    const response = await api.post('/auth/register/', data);
+                    const { user, access, refresh } = response.data;
 
-                    Cookies.set('access_token', tokens.access, { expires: 1 / 24 });
-                    Cookies.set('refresh_token', tokens.refresh, { expires: 7 });
+                    Cookies.set('access_token', access, { expires: 1 / 24, sameSite: 'Lax', path: '/' });
+                    Cookies.set('refresh_token', refresh, { expires: 7, sameSite: 'Lax', path: '/' });
 
                     set({ user, isAuthenticated: true });
                 } finally {
@@ -92,20 +126,20 @@ export const useAuthStore = create<AuthState>()(
                 try {
                     const refreshToken = Cookies.get('refresh_token');
                     if (refreshToken) {
-                        await api.post('/users/logout/', { refresh: refreshToken });
+                        await api.post('/auth/logout/', { refresh: refreshToken });
                     }
                 } catch (error) {
                     // Ignore errors on logout
                 } finally {
-                    Cookies.remove('access_token');
-                    Cookies.remove('refresh_token');
+                    Cookies.remove('access_token', { path: '/' });
+                    Cookies.remove('refresh_token', { path: '/' });
                     set({ user: null, isAuthenticated: false });
                 }
             },
 
             fetchProfile: async () => {
                 try {
-                    const response = await api.get('/users/profile/');
+                    const response = await api.get('/auth/profile/');
                     set({ user: response.data, isAuthenticated: true });
                 } catch (error) {
                     set({ user: null, isAuthenticated: false });
@@ -113,8 +147,8 @@ export const useAuthStore = create<AuthState>()(
             },
 
             updateProfile: async (data: Partial<User>) => {
-                const response = await api.patch('/users/profile/', data);
-                set({ user: response.data.user });
+                await api.patch('/auth/profile/', data);
+                await get().fetchProfile();
             },
 
             setUser: (user: User | null) => {
@@ -124,6 +158,23 @@ export const useAuthStore = create<AuthState>()(
         {
             name: 'auth-storage',
             partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
+            onRehydrateStorage: () => (state) => {
+                state?.setHasHydrated(true);
+
+                // Security Check: If no refresh token in cookies, force logout
+                // This prevents "Ghost Logins" where localStorage says true but API calls fail
+                const refreshToken = Cookies.get('refresh_token');
+                if (!refreshToken && state?.isAuthenticated) {
+                    state.setUser(null);
+                }
+            },
         }
     )
 );
+
+// Global event listener for forced logout from API interceptor
+if (typeof window !== 'undefined') {
+    window.addEventListener('auth:logout', () => {
+        useAuthStore.getState().logout();
+    });
+}
