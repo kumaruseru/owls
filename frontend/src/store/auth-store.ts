@@ -4,7 +4,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import Cookies from '../../node_modules/@types/js-cookie';
+import Cookies from 'js-cookie';
 import api from '@/lib/api';
 
 export interface User {
