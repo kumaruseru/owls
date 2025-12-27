@@ -5,7 +5,12 @@ from .models import Product
 class ProductFilter(django_filters.FilterSet):
     min_price = django_filters.NumberFilter(method='filter_min_price')
     max_price = django_filters.NumberFilter(method='filter_max_price')
-    brand = django_filters.CharFilter(lookup_expr='iexact')
+    
+    # Custom Filter for comma-separated string IN lookup
+    class CharInFilter(django_filters.BaseInFilter, django_filters.CharFilter):
+        pass
+
+    brand = CharInFilter(lookup_expr='in')
     category__slug = django_filters.CharFilter(field_name='category__slug')
     stock_status = django_filters.CharFilter(method='filter_stock_status')
     

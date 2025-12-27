@@ -50,7 +50,7 @@ function ProductsContent() {
     const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
     const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || '');
     const [sortBy, setSortBy] = useState(searchParams.get('sort') || '-created_at');
-    const [selectedBrand, setSelectedBrand] = useState(searchParams.get('brand') || '');
+    const [selectedBrands, setSelectedBrands] = useState<string[]>(searchParams.get('brand') ? searchParams.get('brand')!.split(',') : []);
     const [selectedColor, setSelectedColor] = useState(searchParams.get('color') || '');
     const [priceRange, setPriceRange] = useState({ min: '', max: '' });
 
@@ -95,14 +95,15 @@ function ProductsContent() {
         const category = searchParams.get('category') || '';
         const search = searchParams.get('search') || '';
         const sort = searchParams.get('sort') || '-created_at';
-        const brand = searchParams.get('brand') || '';
+        const brandParam = searchParams.get('brand') || '';
+        const brands = brandParam ? brandParam.split(',') : [];
         const color = searchParams.get('color') || '';
         const page = parseInt(searchParams.get('page') || '1');
 
         if (category !== selectedCategory) setSelectedCategory(category);
         if (search !== searchQuery) setSearchQuery(search);
         if (sort !== sortBy) setSortBy(sort);
-        if (brand !== selectedBrand) setSelectedBrand(brand);
+        if (JSON.stringify(brands) !== JSON.stringify(selectedBrands)) setSelectedBrands(brands);
         if (color !== selectedColor) setSelectedColor(color);
         if (page !== currentPage) setCurrentPage(page);
     }, [searchParams]);
@@ -117,7 +118,7 @@ function ProductsContent() {
                     if (searchQuery) params.append('search', searchQuery);
                     if (selectedCategory) params.append('category__slug', selectedCategory);
                     if (sortBy) params.append('ordering', sortBy);
-                    if (selectedBrand) params.append('brand', selectedBrand);
+                    if (selectedBrands.length > 0) params.append('brand', selectedBrands.join(',')); // Join array
                     if (selectedColor) params.append('color', selectedColor);
                     if (priceRange.min) params.append('min_price', priceRange.min);
                     if (priceRange.max) params.append('max_price', priceRange.max);
@@ -158,7 +159,7 @@ function ProductsContent() {
         }, 300); // Debounce
 
         return () => clearTimeout(timeoutId);
-    }, [selectedCategory, sortBy, searchQuery, selectedBrand, selectedColor, priceRange.min, priceRange.max, currentPage]);
+    }, [selectedCategory, sortBy, searchQuery, selectedBrands, selectedColor, priceRange.min, priceRange.max, currentPage]);
 
     const handleAddToCart = async (productId: string) => {
         try {
@@ -306,10 +307,16 @@ function ProductsContent() {
                                                 <div className="relative flex items-center">
                                                     <input
                                                         type="checkbox"
-                                                        checked={selectedBrand === brand}
+                                                        checked={selectedBrands.includes(brand)}
                                                         onChange={() => {
-                                                            setSelectedBrand(selectedBrand === brand ? '' : brand);
-                                                            updateFilters({ brand: selectedBrand === brand ? '' : brand, page: '1' });
+                                                            let newBrands: string[];
+                                                            if (selectedBrands.includes(brand)) {
+                                                                newBrands = selectedBrands.filter(b => b !== brand);
+                                                            } else {
+                                                                newBrands = [...selectedBrands, brand];
+                                                            }
+                                                            setSelectedBrands(newBrands);
+                                                            updateFilters({ brand: newBrands.join(','), page: '1' });
                                                         }}
                                                         className="peer h-4 w-4 appearance-none rounded border border-white/20 bg-white/5 checked:bg-purple-500 checked:border-purple-500 transition-all cursor-pointer"
                                                     />
@@ -317,7 +324,7 @@ function ProductsContent() {
                                                         <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                                                     </div>
                                                 </div>
-                                                <span className={cn("text-sm transition-colors", selectedBrand === brand ? "text-white font-medium" : "text-neutral-400 group-hover:text-white")}>{brand}</span>
+                                                <span className={cn("text-sm transition-colors", selectedBrands.includes(brand) ? "text-white font-medium" : "text-neutral-400 group-hover:text-white")}>{brand}</span>
                                             </label>
                                         ))}
                                     </div>
@@ -401,7 +408,7 @@ function ProductsContent() {
                                 <Button
                                     variant="outline"
                                     className="mt-8 border-white/10 text-white hover:bg-white/10"
-                                    onClick={() => { setSearchQuery(''); setSelectedCategory(''); setSelectedBrand(''); setSelectedColor(''); setPriceRange({ min: '', max: '' }); updateFilters({ page: '1' }); }}
+                                    onClick={() => { setSearchQuery(''); setSelectedCategory(''); setSelectedBrands([]); setSelectedColor(''); setPriceRange({ min: '', max: '' }); updateFilters({ page: '1' }); }}
                                 >
                                     Clear All Filters
                                 </Button>

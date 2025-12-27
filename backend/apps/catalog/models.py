@@ -39,9 +39,35 @@ class Category(models.Model):
         return self.products.filter(is_active=True).count()
 
 
+class ProductQuerySet(models.QuerySet):
+    def active(self):
+        return self.filter(is_active=True)
+
+    def with_effective_price(self):
+        return self.annotate(
+            effective_price=models.Case(
+                models.When(sale_price__gt=0, then=models.F('sale_price')),
+                default=models.F('price'),
+                output_field=models.DecimalField()
+            )
+        )
+
+class ProductManager(models.Manager):
+    def get_queryset(self):
+        return ProductQuerySet(self.model, using=self._db)
+
+    def active(self):
+        return self.get_queryset().active()
+
+    def with_effective_price(self):
+        return self.get_queryset().with_effective_price()
+
+
 class Product(models.Model):
     """Sản phẩm trong hệ thống."""
     
+    objects = ProductManager()
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, verbose_name='Tên sản phẩm')
     slug = models.SlugField(max_length=255, unique=True)

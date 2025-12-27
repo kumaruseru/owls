@@ -1,16 +1,23 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from . import views
 
 app_name = 'catalog'
 
+router = DefaultRouter()
+router.register(r'categories', views.CategoryViewSet, basename='category') # /categories/, /categories/{slug}/
+router.register(r'products', views.ProductViewSet, basename='product') # /products/, /products/{slug}/, /products/filters/
+router.register(r'products/admin', views.AdminProductViewSet, basename='admin-product') # /products/admin/, /products/admin/{pk}/
+
+# Custom Router for Image Action to match old path structure roughly or cleaner
+# Old path: products/images/<int:pk>/set-primary/
+# New ViewSet Action: set_primary on detail=True.
+# We can register a simple viewset or just use the ViewSet as a standalone view for this specific weird path if needed, 
+# but best is to register it.
+router.register(r'products/images', views.AdminProductImageViewSet, basename='product-image')
+# This gives /products/images/{pk}/set_primary/ (underscores usually by default)
+# We can customize this via @action(url_path='set-primary') which is done.
+
 urlpatterns = [
-    path('categories/', views.CategoryListView.as_view(), name='category_list'),
-    path('categories/<slug:slug>/', views.CategoryDetailView.as_view(), name='category_detail'),
-    path('products/', views.ProductListView.as_view(), name='product_list'),
-    path('products/filters/', views.ProductFilterView.as_view(), name='product_filters'),
-    # Admin
-    path('products/admin/', views.AdminProductListView.as_view(), name='admin_product_list'),
-    path('products/<slug:slug>/', views.ProductDetailView.as_view(), name='product_detail'),
-    path('products/admin/<uuid:pk>/', views.AdminProductDetailView.as_view(), name='admin_product_detail'),
-    path('products/images/<int:pk>/set-primary/', views.AdminProductImageSetPrimaryView.as_view(), name='admin_image_set_primary'),
+    path('', include(router.urls)),
 ]

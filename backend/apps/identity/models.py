@@ -38,6 +38,7 @@ class User(AbstractUser):
         null=True,
         blank=True
     )
+    backup_codes = models.JSONField(default=list, blank=True, help_text="List of one-time backup codes")
     failed_login_attempts = models.PositiveIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
     last_password_change = models.DateTimeField(null=True, blank=True)

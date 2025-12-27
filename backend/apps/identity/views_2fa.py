@@ -1,147 +1,166 @@
 from rest_framework import views, permissions, status
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from django.contrib.auth import get_user_model
-import pyotp
-import qrcode
-import io
-import base64
+from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from .services_2fa import TwoFactorService
+from .serializers_2fa import Confirm2FASerializer, Login2FASerializer, Disable2FASerializer
+from .serializers import UserSerializer
 
 User = get_user_model()
 
 class Enable2FAView(views.APIView):
     """
-    Step 1 of enabling 2FA:
-    - Generate a random secret.
-    - Return the secret and a QR code (base64) for the authenticator app.
+    Step 1: Init 2FA Setup.
+    Generates secret and returns QR code.
     """
     permission_classes = [permissions.IsAuthenticated]
-
+    
     def get(self, request):
         user = request.user
         if user.is_2fa_enabled:
             return Response({"error": "2FA is already enabled."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Generate a random secret if not exists or if checking again
-        # We don't save it to the DB as 'confirmed' yet, but we can temporarily store it 
-        # OR just generate it on the fly. However, we need to verify against THIS secret.
-        # So usually we save it to the user but keep is_2fa_enabled=False until confirmed.
-        
+        # Generate or retrieve pending secret
         if not user.two_factor_secret:
-            secret = pyotp.random_base32()
+            secret = TwoFactorService.generate_secret()
             user.two_factor_secret = secret
-            user.save()
+            user.save(update_fields=['two_factor_secret'])
         else:
             secret = user.two_factor_secret
 
-        # Create OTP URI
-        otp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
-            name=user.email,
-            issuer_name="OWLS Store"
-        )
-
-        # Generate QR Code
-        qr = qrcode.make(otp_uri)
-        img_buffer = io.BytesIO()
-        qr.save(img_buffer, format='PNG')
-        img_str = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+        otp_uri = TwoFactorService.get_provisioning_uri(user, secret)
+        qr_code = TwoFactorService.generate_qr_code(otp_uri)
 
         return Response({
             "secret": secret,
-            "qr_code": f"data:image/png;base64,{img_str}",
+            "qr_code": qr_code,
             "otp_uri": otp_uri
         })
 
 class Confirm2FAView(views.APIView):
     """
-    Step 2 of enabling 2FA:
-    - User sends the code from their app.
-    - valid -> set is_2fa_enabled = True.
+    Step 2: Confirm 2FA Setup.
+    Verifies code => Enables 2FA => Returns Backup Codes.
     """
     permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = '2fa_confirm'
 
     def post(self, request):
-        user = request.user
-        code = request.data.get("code")
+        serializer = Confirm2FASerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        if not code:
-            return Response({"error": "OTP code is required."}, status=status.HTTP_400_BAD_REQUEST)
+        user = request.user
+        code = serializer.validated_data['code']
 
         if not user.two_factor_secret:
             return Response({"error": "No 2FA setup started."}, status=status.HTTP_400_BAD_REQUEST)
 
-        totp = pyotp.TOTP(user.two_factor_secret)
-        if totp.verify(code):
+        if TwoFactorService.verify_totp(user.two_factor_secret, code):
+            # Generate backup codes
+            backup_codes = TwoFactorService.generate_backup_codes()
+            
             user.is_2fa_enabled = True
-            user.two_factor_method = 'totp' # Defaulting to TOTP for now
-            user.save()
-            return Response({"message": "2FA has been successfully enabled."})
-        else:
-            return Response({"error": "Invalid OTP code."}, status=status.HTTP_400_BAD_REQUEST)
+            user.two_factor_method = 'totp'
+            user.backup_codes = backup_codes # Save backup codes
+            user.save(update_fields=['is_2fa_enabled', 'two_factor_method', 'backup_codes'])
+            
+            return Response({
+                "message": "2FA successfully enabled.",
+                "backup_codes": backup_codes,
+                "warning": "Save these backup codes in a safe place. You won't see them again."
+            })
+        
+        return Response({"error": "Invalid OTP code."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class Login2FAView(views.APIView):
     """
-    Step 2 of Login: Exchange temp_token + 2FA code for access/refresh tokens.
+    Step 2 of Login: Verify TOTP or Backup Code.
     """
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = '2fa_login'
 
     def post(self, request):
-        from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
-        from rest_framework_simplejwt.tokens import RefreshToken
+        serializer = Login2FASerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        temp_token = request.data.get("temp_token")
-        code = request.data.get("code")
+        temp_token = serializer.validated_data['temp_token']
+        code = serializer.validated_data.get('code')
+        backup_code = serializer.validated_data.get('backup_code')
 
-        if not temp_token or not code:
-            return Response({"error": "Token and code are required."}, status=status.HTTP_400_BAD_REQUEST)
-
+        # Verify Session Token
         signer = TimestampSigner()
         try:
-            # Token valid for 5 minutes (300 seconds)
-            user_id = signer.unsign(temp_token, max_age=300)
+            user_id = signer.unsign(temp_token, max_age=300) # 5 mins
             user = User.objects.get(id=user_id)
-        except (BadSignature, SignatureExpired):
+        except (BadSignature, SignatureExpired, User.DoesNotExist):
             return Response({"error": "Invalid or expired login session."}, status=status.HTTP_400_BAD_REQUEST)
-        except User.DoesNotExist:
-            return Response({"error": "User not found."}, status=status.HTTP_400_BAD_REQUEST)
 
         if not user.is_2fa_enabled:
              return Response({"error": "2FA not enabled for this user."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Verify Code
-        totp = pyotp.TOTP(user.two_factor_secret)
-        if totp.verify(code):
-            # Issue Tokens
+        # Verify Credential
+        is_valid = False
+        
+        # 1. Try TOTP
+        if code:
+            if TwoFactorService.verify_totp(user.two_factor_secret, code):
+                is_valid = True
+            else:
+                 return Response({"error": "Invalid TOTP code."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 2. Try Backup Code (if TOPT not used or failed - though above returns early)
+        elif backup_code:
+            if TwoFactorService.verify_backup_code(user, backup_code):
+                is_valid = True
+            else:
+                 return Response({"error": "Invalid or used backup code."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if is_valid:
             refresh = RefreshToken.for_user(user)
-            from .serializers import UserSerializer
             return Response({
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
                 'user': UserSerializer(user).data
             })
-        else:
-            return Response({"error": "Invalid 2FA code."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        return Response({"error": "Authentication failed."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class Disable2FAView(views.APIView):
     """
-    Disable 2FA. Requires password confirmation for security.
+    Disable 2FA. Requires password confirmation.
     """
     permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = '2fa_disable'
 
     def post(self, request):
+        serializer = Disable2FASerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
         user = request.user
-        password = request.data.get("password")
+        password = serializer.validated_data['password']
 
         if not user.is_2fa_enabled:
             return Response({"error": "2FA is not enabled."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not password or not user.check_password(password):
+        if not user.check_password(password):
             return Response({"error": "Invalid password."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Reset 2FA fields
         user.is_2fa_enabled = False
         user.two_factor_secret = None
         user.two_factor_method = None
-        user.save()
+        user.backup_codes = [] # Clear backup codes
+        user.save(update_fields=['is_2fa_enabled', 'two_factor_secret', 'two_factor_method', 'backup_codes'])
 
         return Response({"message": "2FA has been disabled."})
