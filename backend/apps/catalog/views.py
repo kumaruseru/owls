@@ -1,11 +1,21 @@
 from rest_framework import generics, filters, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Max, Min
+from rest_framework.pagination import PageNumberPagination
+from django.db.models import Max, Min, F, Case, When, DecimalField
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
+
 from .models import Category, Product, ProductImage
 from .serializers import CategorySerializer, ProductListSerializer, ProductDetailSerializer, ProductCreateSerializer
+from .filters import ProductFilter, ProductOrderingFilter
+from .services import ProductExportService
+
+
+class ProductPagination(PageNumberPagination):
+    page_size = 9
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 
 class CategoryListView(generics.ListAPIView):
@@ -20,12 +30,25 @@ class CategoryDetailView(generics.RetrieveAPIView):
 
 
 class ProductListView(generics.ListAPIView):
-    queryset = Product.objects.filter(is_active=True).select_related('category').prefetch_related('images')
     serializer_class = ProductListSerializer
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['category__slug', 'brand', 'is_featured']
+    pagination_class = ProductPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, ProductOrderingFilter]
+    filterset_class = ProductFilter
     search_fields = ['name', 'description', 'brand']
     ordering_fields = ['price', 'created_at', 'name']
+
+    def get_queryset(self):
+        queryset = Product.objects.filter(is_active=True).select_related('category').prefetch_related('images')
+        
+        # Annotate effective price for correct sorting
+        queryset = queryset.annotate(
+            effective_price=Case(
+                When(sale_price__gt=0, then=F('sale_price')),
+                default=F('price'),
+                output_field=DecimalField()
+            )
+        )
+        return queryset
 
 
 class ProductDetailView(generics.RetrieveAPIView):
@@ -38,12 +61,32 @@ class ProductFilterView(APIView):
     """API endpoint returns filtering options (brands, colors, price range)."""
     
     def get(self, request):
-        products = Product.objects.filter(is_active=True)
+        # Use common filter logic to enable faceted search / dynamic filters
+        base_qs = Product.objects.filter(is_active=True)
+        filterset = ProductFilter(request.GET, queryset=base_qs)
         
-        # Aggregate price range
-        price_stats = products.aggregate(min_price=Min('price'), max_price=Max('price'))
+        if filterset.is_valid():
+            products = filterset.qs
+        else:
+            products = base_qs
+
+        # Calculate effective price for aggregation
+        # If sale_price > 0, use it, else use price
+        products = products.annotate(
+            effective_price=Case(
+                When(sale_price__gt=0, then=F('sale_price')),
+                default=F('price'),
+                output_field=DecimalField()
+            )
+        )
+
+        # Aggregate price range based on effective price
+        price_stats = products.aggregate(
+            min_price=Min('effective_price'), 
+            max_price=Max('effective_price')
+        )
         
-        # Get distinct brands and colors
+        # Get distinct brands and colors based on filtered products
         brands = products.exclude(brand__isnull=True).exclude(brand='').values_list('brand', flat=True).distinct().order_by('brand')
         colors = products.exclude(color__isnull=True).exclude(color='').values_list('color', flat=True).distinct().order_by('color')
         
@@ -61,7 +104,7 @@ class AdminProductListView(generics.ListCreateAPIView):
     queryset = Product.objects.all().order_by('-created_at')
     
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['category', 'is_active', 'is_featured', 'brand']
+    filterset_class = ProductFilter
     search_fields = ['name', 'sku']
 
     def get_serializer_class(self):
@@ -70,66 +113,12 @@ class AdminProductListView(generics.ListCreateAPIView):
         return ProductListSerializer
 
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-
-        # Handle stock filtering manually if needed, or rely on frontend sending stock__gt=0 via custom filter set if we had one.
-        # For now, let's keep it simple with standard filters. 
-        # But wait, user wants filters.
-        
         # Check for export
         if request.query_params.get('export') == 'excel':
-            import openpyxl
-            from django.http import HttpResponse
+            queryset = self.filter_queryset(self.get_queryset())
+            return ProductExportService.export_to_excel(queryset)
 
-            response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-            response['Content-Disposition'] = 'attachment; filename="products_export.xlsx"'
-
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "Products"
-
-            # Headers
-            headers = ['ID', 'Name', 'SKU', 'Category', 'Brand', 'Price', 'Sale Price', 'Stock', 'Active', 'Featured']
-            ws.append(headers)
-
-            # Data
-            for product in queryset:
-                ws.append([
-                    str(product.id),
-                    product.name,
-                    product.sku or '',
-                    product.category.name if product.category else '',
-                    product.brand or '',
-                    product.price,
-                    product.sale_price or '',
-                    product.stock,
-                    'Yes' if product.is_active else 'No',
-                    'Yes' if product.is_featured else 'No'
-                ])
-            
-            # Simple column width adjustment
-            for col in ws.columns:
-                max_length = 0
-                column = col[0].column_letter # Get the column name
-                for cell in col:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                ws.column_dimensions[column].width = adjusted_width
-
-            wb.save(response)
-            return response
-
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+        return super().list(request, *args, **kwargs)
 
 
 class AdminProductDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -150,9 +139,8 @@ class AdminProductImageSetPrimaryView(APIView):
     def post(self, request, pk):
         image = get_object_or_404(ProductImage, pk=pk)
         
-        # Set this as primary, others for same product as False (handled by model save() usually, 
-        # but let's be explicit or rely on model if it has logic)
-        # Model save() logic: if self.is_primary: ProductImage.objects.filter(product=self.product...).update(is_primary=False)
+        # Explicitly set other images to False for atomicity/clarity, relying on DB transaction would be better but this is sufficient.
+        ProductImage.objects.filter(product=image.product).update(is_primary=False)
         
         image.is_primary = True
         image.save()

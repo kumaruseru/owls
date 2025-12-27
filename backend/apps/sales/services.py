@@ -177,6 +177,19 @@ class OrderService:
         payment_url = None
         if checkout_data['payment_method'] not in ['cod', 'bank_transfer']:
             payment_url = OrderService._process_payment(order, request)
+            
+            # If online payment (VNPay/MoMo) but payment URL creation failed,
+            # we should fail the order to prevent orphan orders
+            if payment_url is None:
+                # Rollback: restore stock and delete order
+                for cart_item in cart_items:
+                    Product.objects.filter(id=cart_item.product_id).update(
+                        stock=F('stock') + cart_item.quantity
+                    )
+                order.delete()
+                raise ValidationError({
+                    'error': 'Không thể kết nối đến cổng thanh toán. Vui lòng thử lại hoặc chọn phương thức khác.'
+                })
         
         # Email is now sent upon Admin Confirmation (see update_order_status)
         

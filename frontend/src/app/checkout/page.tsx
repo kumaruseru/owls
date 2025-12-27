@@ -289,9 +289,45 @@ export default function CheckoutPage() {
             }
         } catch (error: any) {
             console.error('Checkout error:', error);
-            // Only show error if it's NOT a "Cart empty" error caused by a race condition success
-            // But with the lock, we shouldn't get here.
-            toast.error(error.response?.data?.error || 'Đặt hàng thất bại');
+            console.error('Error response data:', error.response?.data);
+
+            // Parse error message from various response formats
+            let errorMessage = 'Đặt hàng thất bại';
+            const errorData = error.response?.data;
+
+            if (errorData) {
+                if (typeof errorData === 'string') {
+                    errorMessage = errorData;
+                } else if (errorData.error) {
+                    errorMessage = errorData.error;
+                } else if (errorData.errors) {
+                    // Array of errors
+                    errorMessage = Array.isArray(errorData.errors)
+                        ? errorData.errors.join(', ')
+                        : JSON.stringify(errorData.errors);
+                } else {
+                    // Serializer field errors - format: { field: ["error1", "error2"] }
+                    const messages: string[] = [];
+                    Object.entries(errorData).forEach(([field, errors]) => {
+                        if (Array.isArray(errors)) {
+                            messages.push(`${field}: ${errors.join(', ')}`);
+                        } else if (typeof errors === 'string') {
+                            messages.push(`${field}: ${errors}`);
+                        }
+                    });
+                    if (messages.length > 0) {
+                        errorMessage = messages.join('; ');
+                    }
+                }
+            }
+
+            toast.error(errorMessage);
+
+            // Redirect to failed page for payment gateway errors
+            if (data.payment_method !== 'cod') {
+                router.push(`/checkout/failed?reason=${encodeURIComponent(errorMessage)}`);
+            }
+
             isCheckoutSubmitting.current = false; // Release lock on error only
             setIsSubmitting(false);
         }
