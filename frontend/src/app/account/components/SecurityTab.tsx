@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Save, Loader2, Shield, Trash2, AlertTriangle, Check, ShieldAlert, Key } from 'lucide-react';
+import { useEffect } from 'react';
+import { Save, Loader2, Shield, Trash2, AlertTriangle, Check, ShieldAlert, Key, Copy, RefreshCcw, Eye, EyeOff, Chrome, Github, Link } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -34,12 +35,25 @@ interface SecurityTabProps {
 
 export function SecurityTab({ user }: SecurityTabProps) {
     const router = useRouter();
-    const { logout, updateProfile } = useAuthStore();
+    const { logout, updateProfile, socialAccounts, fetchSocialAccounts, disconnectSocialAccount } = useAuthStore();
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        fetchSocialAccounts();
+    }, [fetchSocialAccounts]);
+
+    // Format date helper
+    const formatDate = (dateString: string) => {
+        return new Date(dateString).toLocaleDateString('vi-VN', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    };
 
     // 2FA State
     const [is2FALoading, setIs2FALoading] = useState(false);
-    const [setupStep, setSetupStep] = useState<'idle' | 'qr' | 'disable'>('idle');
+    const [setupStep, setSetupStep] = useState<'idle' | 'qr' | 'disable' | 'backup'>('idle');
     const [qrData, setQrData] = useState<{ qr_code: string; secret: string } | null>(null);
     const [otpCode, setOtpCode] = useState("");
 
@@ -226,7 +240,95 @@ export function SecurityTab({ user }: SecurityTabProps) {
                 </div>
             </div>
 
-            {/* 2. Two-Factor Authentication Section */}
+            {/* 2. Connected Accounts Section */}
+            <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl shadow-2xl shadow-purple-900/5 transition-all hover:bg-white/[0.07]">
+                <h2 className="text-xl font-bold text-white mb-6 border-b border-white/10 pb-4 flex items-center gap-3">
+                    <div className="p-2 bg-blue-500/10 rounded-xl">
+                        <Link className="text-blue-400" size={20} />
+                    </div>
+                    Tài khoản liên kết
+                </h2>
+
+                <div className="space-y-4">
+                    {/* Google */}
+                    <div className="flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center">
+                                <Chrome size={20} className="text-black" />
+                            </div>
+                            <div>
+                                <h3 className="text-white font-bold">Google</h3>
+                                {socialAccounts?.find(a => a.provider === 'google') ? (
+                                    <p className="text-xs text-emerald-400 font-medium flex items-center gap-1">
+                                        <Check size={12} /> Đã liên kết • {formatDate(socialAccounts.find(a => a.provider === 'google')!.created_at)}
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-neutral-500">Chưa liên kết</p>
+                                )}
+                            </div>
+                        </div>
+                        {socialAccounts?.find(a => a.provider === 'google') ? (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => disconnectSocialAccount('google')}
+                                className="text-neutral-400 hover:text-red-400 hover:bg-red-500/10"
+                            >
+                                Hủy liên kết
+                            </Button>
+                        ) : (
+                            <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/auth/social/google/`}
+                                className="bg-white/10 hover:bg-white/20 text-white border-0"
+                            >
+                                Liên kết
+                            </Button>
+                        )}
+                    </div>
+
+                    {/* GitHub */}
+                    <div className="flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center border border-white/10">
+                                <Github size={20} className="text-white" />
+                            </div>
+                            <div>
+                                <h3 className="text-white font-bold">GitHub</h3>
+                                {socialAccounts?.find(a => a.provider === 'github') ? (
+                                    <p className="text-xs text-emerald-400 font-medium flex items-center gap-1">
+                                        <Check size={12} /> Đã liên kết • {formatDate(socialAccounts.find(a => a.provider === 'github')!.created_at)}
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-neutral-500">Chưa liên kết</p>
+                                )}
+                            </div>
+                        </div>
+                        {socialAccounts?.find(a => a.provider === 'github') ? (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => disconnectSocialAccount('github')}
+                                className="text-neutral-400 hover:text-red-400 hover:bg-red-500/10"
+                            >
+                                Hủy liên kết
+                            </Button>
+                        ) : (
+                            <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/auth/social/github/`}
+                                className="bg-white/10 hover:bg-white/20 text-white border-0"
+                            >
+                                Liên kết
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* 3. Two-Factor Authentication Section */}
             <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl shadow-2xl shadow-purple-900/5 transition-all hover:bg-white/[0.07]">
                 <h2 className="text-xl font-bold text-white mb-6 border-b border-white/10 pb-4 flex items-center gap-3">
                     <div className="p-2 bg-blue-500/10 rounded-xl">
@@ -373,6 +475,33 @@ export function SecurityTab({ user }: SecurityTabProps) {
                         </div>
                     )}
                 </div>
+
+                {/* Backup Codes Section */}
+                {user?.is_2fa_enabled && (
+                    <div className="mt-8 pt-6 border-t border-white/10">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-white font-bold text-lg mb-1">Mã sao lưu</h3>
+                                <p className="text-sm text-neutral-400">
+                                    Mã này dùng để đăng nhập khi bạn mất điện thoại hoặc không thể nhận mã OTP.
+                                </p>
+                            </div>
+                            <Button
+                                variant="outline"
+                                onClick={() => setSetupStep((prev) => prev === 'backup' ? 'idle' : 'backup')}
+                                className="border-white/20 text-white hover:bg-white/10 rounded-xl"
+                            >
+                                {setupStep === 'backup' ? 'Đóng' : 'Xem mã'}
+                            </Button>
+                        </div>
+
+                        {setupStep === 'backup' && (
+                            <BackupCodesManager
+                                onClose={() => setSetupStep('idle')}
+                            />
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* 3. Delete Account Section */}
@@ -437,6 +566,100 @@ export function SecurityTab({ user }: SecurityTabProps) {
                     </div>
                 )}
             </div>
+        </div>
+    );
+}
+
+function BackupCodesManager({ onClose }: { onClose: () => void }) {
+    const [password, setPassword] = useState('');
+    const [codes, setCodes] = useState<string[]>([]);
+    const [isVerified, setIsVerified] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    const onFetchCodes = async (e?: React.FormEvent, forceRegenerate = false) => {
+        e?.preventDefault();
+        setLoading(true);
+        try {
+            const res = await api.post('/auth/2fa/backup-codes/', {
+                password,
+                action: forceRegenerate ? 'regenerate' : 'view'
+            });
+            setCodes(res.data.backup_codes);
+            setIsVerified(true);
+            if (forceRegenerate) toast.success("Đã tạo mới mã dự phòng");
+        } catch (error: any) {
+            const err = error as any;
+            toast.error(err.response?.data?.error || "Mật khẩu không đúng");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (!isVerified) {
+        return (
+            <div className="mt-6 p-6 bg-black/20 rounded-2xl border border-white/10 animate-in slide-in-from-top-2">
+                <h3 className="text-white font-bold mb-2">Nhập mật khẩu để xem mã</h3>
+                <div className="flex gap-2 max-w-md">
+                    <Input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Mật khẩu của bạn"
+                        className="bg-white/5 border-white/10 text-white"
+                    />
+                    <Button onClick={(e) => onFetchCodes(e)} disabled={loading} className="bg-white text-black hover:bg-neutral-200">
+                        {loading ? <Loader2 className="animate-spin" /> : "Xác nhận"}
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="mt-6 p-6 bg-black/20 rounded-2xl border border-white/10 animate-in slide-in-from-top-2">
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-white font-bold flex items-center gap-2">
+                    <Key size={16} className="text-purple-400" />
+                    Mã dự phòng của bạn
+                </h3>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onFetchCodes(undefined, true)}
+                        className="h-8 text-xs border-white/10 text-neutral-400 hover:text-white"
+                        disabled={loading}
+                    >
+                        {loading ? <Loader2 size={12} className="animate-spin mr-1" /> : <RefreshCcw size={12} className="mr-1" />}
+                        Tạo mới
+                    </Button>
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-8 text-xs bg-white/10 hover:bg-white/20 text-white border-0"
+                        onClick={() => {
+                            navigator.clipboard.writeText(codes.join('\n'));
+                            toast.success("Đã sao chép vào bộ nhớ đệm");
+                        }}
+                    >
+                        <Copy size={12} className="mr-1" /> Sao chép
+                    </Button>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {codes.map((code, i) => (
+                    <div key={i} className="bg-white/5 border border-white/10 rounded-lg py-2 px-3 text-center">
+                        <code className="text-sm font-mono text-emerald-400 tracking-wider">
+                            {code}
+                        </code>
+                    </div>
+                ))}
+            </div>
+
+            <p className="text-xs text-neutral-500 mt-4">
+                * Lưu ý: Mỗi mã chỉ có thể sử dụng một lần. Hãy lưu lại ở nơi an toàn.
+            </p>
         </div>
     );
 }

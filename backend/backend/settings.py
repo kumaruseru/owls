@@ -186,6 +186,11 @@ REST_FRAMEWORK = {
         'anon': env('THROTTLE_RATE_ANON', default='100/min'),
         'user': env('THROTTLE_RATE_USER', default='1000/min'),
         'login': '60/min',
+        '2fa_confirm': '5/min',
+        '2fa_login': '5/min',
+        '2fa_disable': '5/min',
+        '2fa_email': '5/min',
+        '2fa_backup_codes': '5/min',
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
@@ -250,3 +255,9 @@ LOGGING = {
         'apps': {'handlers': ['console'], 'level': 'INFO', 'propagate': True},
     },
 }
+
+# --- SOCIAL AUTH ---
+GITHUB_CLIENT_ID = env('GITHUB_CLIENT_ID', default='')
+GITHUB_CLIENT_SECRET = env('GITHUB_CLIENT_SECRET', default='')
+GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
+GOOGLE_CLIENT_SECRET = env('GOOGLE_CLIENT_SECRET', default='')

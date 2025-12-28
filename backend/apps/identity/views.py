@@ -55,6 +55,35 @@ class LoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [LoginThrottle]
 
+    def post(self, request, *args, **kwargs):
+        # 1. Check Maintenance Mode
+        from apps.core.models import SiteConfig
+        config = SiteConfig.load()
+        
+        # 2. If Maintenance is ON, we need to peek at the user before issuing tokens
+        if config.maintenance_mode:
+            # We can use the serializer to validate credentials without returning tokens yet
+            serializer = self.get_serializer(data=request.data)
+            
+            try:
+                serializer.is_valid(raise_exception=True)
+                user = serializer.user
+                
+                if not user.is_staff and not user.is_superuser:
+                    return Response(
+                        {"detail": "Hệ thống đang bảo trì. Chỉ quản trị viên mới có quyền đăng nhập."},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE
+                    )
+            except Exception as e:
+                # If validation fails (wrong password), let the standard flow handle it or return error
+                # But to maintain standard behavior for wrong passwords, we let super().post handle it
+                # ONLY if we want to hide that maintenance is on from bad actors? 
+                # No, better to fail early if credentials are bad, or fail late if maintenance.
+                # Re-raising exception to let standard error handling work
+                raise e
+
+        return super().post(request, *args, **kwargs)
+
 
 class LogoutView(APIView):
     """Logout and blacklist refresh token."""

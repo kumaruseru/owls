@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -10,12 +10,15 @@ import { useAuthStore } from '@/store/auth-store';
 import { Button } from '@/components/ui/button';
 import { cn, formatPrice } from '@/lib/utils';
 import { AuroraBackground } from '@/components/ui/aurora-background';
+import { B2BContactModal } from '@/components/modals/B2BContactModal';
 
 export default function CartPage() {
     const { cart, isLoading, updatingItems, fetchCart, updateQuantity, removeFromCart, clearCart } = useCartStore();
     const { isAuthenticated, hasHydrated } = useAuthStore();
 
     const [couponCode, setCouponCode] = useState('');
+    const [b2bModalOpen, setB2bModalOpen] = useState(false);
+    const [b2bProduct, setB2bProduct] = useState<{ name: string, quantity: number } | null>(null);
 
     useEffect(() => {
         if (hasHydrated) {
@@ -23,7 +26,13 @@ export default function CartPage() {
         }
     }, [hasHydrated, fetchCart]);
 
-    const handleUpdateQuantity = async (productId: string, newQuantity: number) => {
+    const handleUpdateQuantity = async (productId: string, newQuantity: number, productName: string = '') => {
+        if (newQuantity > 5) {
+            setB2bProduct({ name: productName, quantity: newQuantity });
+            setB2bModalOpen(true);
+            return;
+        }
+
         try {
             await updateQuantity(productId, newQuantity);
         } catch (error: any) {
@@ -51,6 +60,13 @@ export default function CartPage() {
 
     return (
         <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500/30">
+            <B2BContactModal
+                isOpen={b2bModalOpen}
+                onClose={() => setB2bModalOpen(false)}
+                productName={b2bProduct?.name}
+                quantity={b2bProduct?.quantity}
+            />
+
             {/* Fixed Background */}
             <div className="fixed inset-0 z-0 pointer-events-none">
                 <AuroraBackground className="h-full w-full">
@@ -156,7 +172,7 @@ export default function CartPage() {
                                                     {/* Quantity Control */}
                                                     <div className="flex items-center border border-white/10 bg-black/40 rounded-xl h-10 overflow-hidden shadow-inner">
                                                         <button
-                                                            onClick={() => handleUpdateQuantity(item.product.id, item.quantity - 1)}
+                                                            onClick={() => handleUpdateQuantity(item.product.id, item.quantity - 1, item.product.name)}
                                                             disabled={item.quantity <= 1}
                                                             className="w-10 h-full flex items-center justify-center hover:bg-white/10 disabled:opacity-30 text-white transition-colors active:scale-90 transform duration-100"
                                                         >
@@ -166,7 +182,7 @@ export default function CartPage() {
                                                             {item.quantity}
                                                         </span>
                                                         <button
-                                                            onClick={() => handleUpdateQuantity(item.product.id, item.quantity + 1)}
+                                                            onClick={() => handleUpdateQuantity(item.product.id, item.quantity + 1, item.product.name)}
                                                             disabled={item.quantity >= item.product.stock}
                                                             className="w-10 h-full flex items-center justify-center hover:bg-white/10 disabled:opacity-30 text-white transition-colors active:scale-90 transform duration-100"
                                                         >

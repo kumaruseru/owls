@@ -2,10 +2,12 @@
 
 import { ReactLenis } from '@studio-freight/react-lenis'
 import { Toaster } from 'react-hot-toast';
+import { MaintenanceCheck } from '@/components/common/MaintenanceCheck';
 
 export function Providers({ children }: { children: any }) {
     return (
         <ReactLenis root options={{ lerp: 0.1, duration: 1.2, smoothWheel: true }}>
+            <MaintenanceCheck />
             {children}
             <Toaster
                 position="top-center"

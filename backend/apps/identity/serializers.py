@@ -111,6 +111,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         
         if error:
             raise serializers.ValidationError({'detail': error})
+            
+        self.user = user  # Ensure user is available on serializer instance
         
         # Check for 2FA
         if user.is_2fa_enabled:

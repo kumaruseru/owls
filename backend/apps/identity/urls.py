@@ -1,6 +1,6 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
-from . import views, views_2fa
+from . import views, views_2fa, views_social
 
 app_name = 'identity'
 
@@ -27,8 +27,20 @@ urlpatterns = [
     
     # 2FA
     path('2fa/enable/', views_2fa.Enable2FAView.as_view(), name='enable_2fa'),
+    path('2fa/send-email/', views_2fa.Send2FAEmailView.as_view(), name='send_2fa_email'),
+    path('2fa/backup-codes/', views_2fa.BackupCodesView.as_view(), name='backup_codes'),
     path('2fa/confirm/', views_2fa.Confirm2FAView.as_view(), name='confirm_2fa'),
     path('2fa/disable/', views_2fa.Disable2FAView.as_view(), name='disable_2fa'),
+
+    # Social Auth
+    path('social/github/', views_social.GithubLoginView.as_view(), name='github_login'),
+    path('social/github/callback/', views_social.GithubCallbackView.as_view(), name='github_callback'),
+    
+    path('social/google/', views_social.GoogleLoginView.as_view(), name='google_login'),
+    path('social/google/callback/', views_social.GoogleCallbackView.as_view(), name='google_callback'),
+    
+    path('social/accounts/', views_social.SocialAccountListView.as_view(), name='social_account_list'),
+    path('social/disconnect/', views_social.DisconnectSocialAccountView.as_view(), name='disconnect_social_account'),
     
     # Addresses
     path('addresses/', views.UserAddressListCreateView.as_view(), name='address_list'),

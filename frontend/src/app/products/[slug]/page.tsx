@@ -15,6 +15,7 @@ import { cn, formatPrice } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AuroraBackground } from '@/components/ui/aurora-background';
+import { B2BContactModal } from '@/components/modals/B2BContactModal';
 
 interface Product {
     id: string;
@@ -54,6 +55,7 @@ export default function ProductDetailPage() {
     const [quantity, setQuantity] = useState(1);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'description' | 'specs' | 'reviews'>('description');
+    const [showB2BModal, setShowB2BModal] = useState(false);
 
     const { addToCart, isLoading: cartLoading } = useCartStore();
 
@@ -66,6 +68,13 @@ export default function ProductDetailPage() {
             setIsLoading(true);
             setProduct(null);
             setSelectedImage(null);
+
+            console.log('Fetching product details for slug:', slug);
+            if (slug === 'undefined') {
+                console.error('Invalid slug: undefined');
+                setIsLoading(false);
+                return;
+            }
 
             try {
                 const [productRes, reviewsRes] = await Promise.all([
@@ -97,6 +106,20 @@ export default function ProductDetailPage() {
         };
     }, [slug]);
 
+    const handleQuantityChange = (newQuantity: number) => {
+        if (!product) return;
+
+        // Ensure within stock limits logically
+        const safeQuantity = Math.min(product.stock, newQuantity);
+
+        if (safeQuantity > 5) {
+            setShowB2BModal(true);
+            setQuantity(5);
+            return;
+        }
+        setQuantity(Math.max(1, safeQuantity));
+    };
+
     const handleAddToCart = async () => {
         if (!product) return;
         try {
@@ -109,6 +132,13 @@ export default function ProductDetailPage() {
 
     return (
         <div className="min-h-screen bg-black text-white font-sans selection:bg-purple-500/30">
+            <B2BContactModal
+                isOpen={showB2BModal}
+                onClose={() => setShowB2BModal(false)}
+                productName={product?.name}
+                quantity={6}
+            />
+
             {/* Fixed Background */}
             <div className="fixed inset-0 z-0 pointer-events-none">
                 <AuroraBackground className="h-full w-full">
@@ -277,7 +307,7 @@ export default function ProductDetailPage() {
                                                 {/* Quantity */}
                                                 <div className="flex items-center border border-white/10 bg-white/5 rounded-xl h-14">
                                                     <button
-                                                        onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                                                        onClick={() => handleQuantityChange(quantity - 1)}
                                                         className="w-12 h-full flex items-center justify-center hover:bg-white/10 transition-colors text-white rounded-l-xl"
                                                     >
                                                         <Minus size={18} />
@@ -286,7 +316,7 @@ export default function ProductDetailPage() {
                                                         {quantity}
                                                     </div>
                                                     <button
-                                                        onClick={() => product && setQuantity(Math.min(product.stock, quantity + 1))}
+                                                        onClick={() => handleQuantityChange(quantity + 1)}
                                                         className="w-12 h-full flex items-center justify-center hover:bg-white/10 transition-colors text-white rounded-r-xl"
                                                     >
                                                         <Plus size={18} />

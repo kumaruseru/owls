@@ -143,3 +143,18 @@ class UserAddress(models.Model):
     def full_address(self):
         parts = [self.address, self.ward, self.district, self.city]
         return ', '.join(filter(None, parts))
+
+
+class SocialAccount(models.Model):
+    """Linked social accounts for users."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_accounts')
+    provider = models.CharField(max_length=20, choices=[('github', 'GitHub'), ('google', 'Google')])
+    uid = models.CharField(max_length=255)
+    extra_data = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('provider', 'uid')
+
+    def __str__(self):
+        return f"{self.user.email} - {self.provider}"

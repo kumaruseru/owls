@@ -4,6 +4,8 @@ import io
 import base64
 import secrets
 from django.conf import settings
+from django.core.cache import cache
+from .services import EmailService
 
 class TwoFactorService:
     @staticmethod
@@ -37,12 +39,12 @@ class TwoFactorService:
         return totp.verify(code)
 
     @staticmethod
-    def generate_backup_codes(count=10, length=10):
-        """Generates a list of random backup codes."""
+    def generate_backup_codes(count=12, length=6):
+        """Generates a list of random 6-digit backup codes."""
         codes = []
         for _ in range(count):
-            # Generate a random hex string
-            token = secrets.token_hex(length // 2)
+            # Generate a 6-digit number string
+            token = "".join(secrets.choice("0123456789") for _ in range(length))
             codes.append(token)
         return codes
 
@@ -59,5 +61,47 @@ class TwoFactorService:
         if code in user.backup_codes:
             user.backup_codes.remove(code)
             user.save(update_fields=['backup_codes'])
+            return True
+        return False
+
+    @staticmethod
+    def generate_email_otp(user):
+        """Generates a 6-digit OTP, caches it, and sends via email."""
+        # Generate 6 digit crypto secure OTP
+        otp = "".join(secrets.choice("0123456789") for _ in range(6))
+        
+        # Cache for 5 minutes
+        cache_key = f"email_2fa_{user.id}"
+        cache.set(cache_key, otp, timeout=300)
+        
+        # Send Email
+        subject = "Mã xác thực 2 lớp - OWLS Store"
+        message = f"""
+Xin chào {user.full_name},
+
+Mã xác thực 2 lớp (2FA) của bạn là: {otp}
+
+Mã này sẽ hết hạn sau 5 phút. Vui lòng không chia sẻ mã này cho bất kỳ ai.
+
+Nếu bạn không yêu cầu mã này, vui lòng đổi mật khẩu ngay lập tức.
+
+Trân trọng,
+OWLS Store Team
+        """
+        try:
+            EmailService._send_email(subject, message, user.email)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def verify_email_otp(user, code):
+        """Verifies the cached Email OTP."""
+        cache_key = f"email_2fa_{user.id}"
+        cached_otp = cache.get(cache_key)
+        
+        if cached_otp and str(cached_otp) == str(code):
+            # Invalidate after use
+            cache.delete(cache_key)
             return True
         return False

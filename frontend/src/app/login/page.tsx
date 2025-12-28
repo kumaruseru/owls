@@ -35,6 +35,8 @@ export default function LoginPage() {
     const [step, setStep] = useState<'login' | '2fa'>('login');
     const [tempToken, setTempToken] = useState('');
     const [otpCode, setOtpCode] = useState('');
+    const [method, setMethod] = useState<'totp' | 'email' | 'backup'>('totp');
+    const [emailCooldown, setEmailCooldown] = useState(0);
     const otpInputRef = useRef<HTMLInputElement>(null);
 
     const {
@@ -52,6 +54,14 @@ export default function LoginPage() {
         }
     }, [step]);
 
+    // Email Cooldown Timer
+    useEffect(() => {
+        if (emailCooldown > 0) {
+            const timer = setInterval(() => setEmailCooldown(prev => prev - 1), 1000);
+            return () => clearInterval(timer);
+        }
+    }, [emailCooldown]);
+
     const onSubmit = async (data: LoginForm) => {
         setIsSubmitting(true);
         try {
@@ -60,6 +70,7 @@ export default function LoginPage() {
             if (res?.requires_2fa) {
                 setTempToken(res.temp_token);
                 setStep('2fa');
+                // Check if user has preferences? For now default to TOTP
                 toast.custom((t) => (
                     <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} flex items-center bg-black/80 border border-purple-500/50 backdrop-blur-md text-white rounded-xl p-4 shadow-xl`}>
                         <Shield className="w-5 h-5 text-purple-400 mr-3" />
@@ -81,14 +92,27 @@ export default function LoginPage() {
         }
     };
 
+    const handleSendEmail = async () => {
+        if (emailCooldown > 0) return;
+
+        try {
+            await useAuthStore.getState().send2FAEmail(tempToken);
+            setEmailCooldown(60);
+            toast.success("Verification code sent to your email.");
+        } catch (error) {
+            toast.error("Failed to send email. Please try again.");
+        }
+    };
+
     const onVerify2FA = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (otpCode.length < 6) return;
+        if (otpCode.length !== 6) return;
 
         setIsSubmitting(true);
         try {
-            await api.post('/auth/login/2fa/', { temp_token: tempToken, code: otpCode });
-            await useAuthStore.getState().verify2FA(tempToken, otpCode);
+            // Check if backup code
+            const isBackup = method === 'backup';
+            await useAuthStore.getState().verify2FA(tempToken, otpCode, isBackup);
 
             toast.success('Verified successfully.');
             router.push('/');
@@ -263,11 +287,19 @@ export default function LoginPage() {
 
                                     {/* Social Login */}
                                     <div className="grid grid-cols-2 gap-3">
-                                        <Button variant="outline" className="h-11 rounded-xl border-white/10 bg-white/5 hover:bg-white/10 hover:text-white text-neutral-300 gap-2 transition-all">
+                                        <Button
+                                            variant="outline"
+                                            className="h-11 rounded-xl border-white/10 bg-white/5 hover:bg-white/10 hover:text-white text-neutral-300 gap-2 transition-all"
+                                            onClick={() => window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/auth/social/google/`}
+                                        >
                                             <Chrome size={18} />
                                             Google
                                         </Button>
-                                        <Button variant="outline" className="h-11 rounded-xl border-white/10 bg-white/5 hover:bg-white/10 hover:text-white text-neutral-300 gap-2 transition-all">
+                                        <Button
+                                            variant="outline"
+                                            className="h-11 rounded-xl border-white/10 bg-white/5 hover:bg-white/10 hover:text-white text-neutral-300 gap-2 transition-all"
+                                            onClick={() => window.location.href = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/auth/social/github/`}
+                                        >
                                             <Github size={18} />
                                             Github
                                         </Button>
@@ -298,36 +330,69 @@ export default function LoginPage() {
                                     <Shield size={32} />
                                 </div>
                                 <h1 className="text-2xl font-bold mb-2">Security Check</h1>
-                                <p className="text-neutral-400 text-sm mb-8 mx-auto max-w-[300px]">
-                                    Enter the 6-digit code from your authenticator app to continue.
+                                <p className="text-neutral-400 text-sm mb-6 mx-auto max-w-[300px]">
+                                    {method === 'totp' && "Enter the 6-digit code from your authenticator app."}
+                                    {method === 'email' && "Enter the 6-digit code sent to your email."}
+                                    {method === 'backup' && "Enter one of your 6-digit backup codes."}
                                 </p>
 
+                                {/* Method Switcher */}
+                                <div className="flex justify-center gap-2 mb-8">
+                                    <button
+                                        onClick={() => setMethod('totp')}
+                                        className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", method === 'totp' ? "bg-white/10 text-white" : "text-neutral-500 hover:text-white")}
+                                    >
+                                        Authenticator
+                                    </button>
+                                    <button
+                                        onClick={() => setMethod('email')}
+                                        className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", method === 'email' ? "bg-white/10 text-white" : "text-neutral-500 hover:text-white")}
+                                    >
+                                        Email OTP
+                                    </button>
+                                    <button
+                                        onClick={() => setMethod('backup')}
+                                        className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-all", method === 'backup' ? "bg-white/10 text-white" : "text-neutral-500 hover:text-white")}
+                                    >
+                                        Backup Code
+                                    </button>
+                                </div>
+
                                 <form onSubmit={onVerify2FA} className="space-y-6">
-                                    <div className="relative">
-                                        <Input
-                                            ref={otpInputRef}
-                                            value={otpCode}
-                                            onChange={(e) => {
-                                                const val = e.target.value.replace(/[^0-9]/g, ''); // Only numbers
-                                                if (val.length <= 6) setOtpCode(val);
-                                            }}
-                                            className={cn(
-                                                "bg-black/20 border-white/10 text-center text-3xl tracking-[0.6em] font-mono h-16 rounded-2xl transition-all duration-300",
-                                                "focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500/50",
-                                                otpCode.length === 6 && "border-emerald-500/50 text-emerald-400 bg-emerald-500/5"
-                                            )}
-                                            placeholder="000000"
-                                            maxLength={6}
-                                            autoComplete="one-time-code"
-                                            inputMode="numeric"
-                                            pattern="[0-9]*"
-                                        />
-                                        {/* Visual Dash indicators optional */}
-                                        <div className="absolute top-1/2 left-0 w-full -translate-y-1/2 pointer-events-none flex justify-center gap-2 opacity-10">
-                                            {[...Array(6)].map((_, i) => (
-                                                <div key={i} className="w-8 h-10 border-b-2 border-white" />
-                                            ))}
+                                    <div className="space-y-4">
+                                        <div className="relative">
+                                            <Input
+                                                ref={otpInputRef}
+                                                value={otpCode}
+                                                onChange={(e) => {
+                                                    const val = e.target.value.replace(/[^0-9]/g, '');
+                                                    if (val.length <= 6) setOtpCode(val);
+                                                }}
+                                                className={cn(
+                                                    "bg-black/20 border-white/10 text-center tracking-[0.6em] font-mono h-16 rounded-2xl transition-all duration-300 text-3xl",
+                                                    "focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500/50",
+                                                    otpCode.length === 6 && "border-emerald-500/50 text-emerald-400 bg-emerald-500/5"
+                                                )}
+                                                placeholder="000000"
+                                                maxLength={6}
+                                                autoComplete="one-time-code"
+                                                inputMode="numeric"
+                                                pattern="[0-9]*"
+                                            />
                                         </div>
+
+                                        {method === 'email' && (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={handleSendEmail}
+                                                disabled={emailCooldown > 0 || isSubmitting}
+                                                className="text-xs text-purple-400 hover:text-purple-300"
+                                            >
+                                                {emailCooldown > 0 ? `Resend code in ${emailCooldown}s` : "Send verification code"}
+                                            </Button>
+                                        )}
                                     </div>
 
                                     <Button
@@ -336,7 +401,7 @@ export default function LoginPage() {
                                         disabled={isSubmitting || otpCode.length !== 6}
                                         className={cn(
                                             "w-full bg-white text-black hover:bg-neutral-200 font-bold rounded-xl h-12 transition-all duration-300",
-                                            otpCode.length === 6 ? "shadow-[0_0_20px_rgba(255,255,255,0.3)] scale-[1.02]" : "opacity-80"
+                                            "shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(255,255,255,0.3)]"
                                         )}
                                     >
                                         {isSubmitting ? <Loader2 className="animate-spin" /> : "Verify & Login"}

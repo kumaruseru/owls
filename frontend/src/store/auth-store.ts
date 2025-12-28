@@ -31,19 +31,30 @@ export interface User {
     is_2fa_enabled: boolean;
 }
 
+export interface SocialAccount {
+    provider: string;
+    uid: string;
+    created_at: string;
+}
+
 interface AuthState {
     user: User | null;
     isAuthenticated: boolean;
     isLoading: boolean;
     hasHydrated: boolean;
+    socialAccounts: SocialAccount[];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     login: (email: string, password: string) => Promise<any>;
-    verify2FA: (tempToken: string, code: string) => Promise<void>;
+    verify2FA: (tempToken: string, code: string, isBackup?: boolean) => Promise<void>;
+    socialLogin: (provider: string, code: string) => Promise<void>;
+    send2FAEmail: (tempToken: string) => Promise<void>;
     register: (data: RegisterData) => Promise<void>;
     logout: () => Promise<void>;
     fetchProfile: () => Promise<void>;
     updateProfile: (data: Partial<User>) => Promise<void>;
+    fetchSocialAccounts: () => Promise<void>;
+    disconnectSocialAccount: (provider: string) => Promise<void>;
     setUser: (user: User | null) => void;
     setHasHydrated: (hydrated: boolean) => void;
 }
@@ -65,6 +76,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: false,
             isLoading: false,
             hasHydrated: false,
+            socialAccounts: [],
 
             setHasHydrated: (hydrated: boolean) => {
                 set({ hasHydrated: hydrated });
@@ -91,10 +103,14 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
-            verify2FA: async (tempToken: string, code: string) => {
+            verify2FA: async (tempToken: string, code: string, isBackup: boolean = false) => {
                 set({ isLoading: true });
                 try {
-                    const response = await api.post('/auth/login/2fa/', { temp_token: tempToken, code });
+                    const payload = isBackup
+                        ? { temp_token: tempToken, backup_code: code }
+                        : { temp_token: tempToken, code };
+
+                    const response = await api.post('/auth/login/2fa/', payload);
                     const { access, refresh } = response.data;
 
                     Cookies.set('access_token', access, { expires: 1 / 24, sameSite: 'Lax', path: '/' });
@@ -102,6 +118,35 @@ export const useAuthStore = create<AuthState>()(
 
                     await get().fetchProfile();
                     set({ isAuthenticated: true });
+                } finally {
+                    set({ isLoading: false });
+                }
+            },
+
+            socialLogin: async (provider: string, code: string) => {
+                set({ isLoading: true });
+                try {
+                    const response = await api.post(`/auth/social/${provider}/callback/`, { code });
+                    // If response returns tokens, it's a login or link
+                    // But if account linking logic is inside callback view, it returns tokens or link confirmation?
+                    // Currently my backend view returns tokens in both cases.
+
+                    const { access, refresh } = response.data;
+
+                    Cookies.set('access_token', access, { expires: 1 / 24, sameSite: 'Lax', path: '/' });
+                    Cookies.set('refresh_token', refresh, { expires: 7, sameSite: 'Lax', path: '/' });
+
+                    await get().fetchProfile();
+                    set({ isAuthenticated: true });
+                } finally {
+                    set({ isLoading: false });
+                }
+            },
+
+            send2FAEmail: async (tempToken: string) => {
+                set({ isLoading: true });
+                try {
+                    await api.post('/auth/2fa/send-email/', { temp_token: tempToken });
                 } finally {
                     set({ isLoading: false });
                 }
@@ -117,6 +162,25 @@ export const useAuthStore = create<AuthState>()(
                     Cookies.set('refresh_token', refresh, { expires: 7, sameSite: 'Lax', path: '/' });
 
                     set({ user, isAuthenticated: true });
+                } finally {
+                    set({ isLoading: false });
+                }
+            },
+
+            fetchSocialAccounts: async () => {
+                try {
+                    const response = await api.get('/auth/social/accounts/');
+                    set({ socialAccounts: response.data });
+                } catch (error) {
+                    console.error("Failed to fetch social accounts", error);
+                }
+            },
+
+            disconnectSocialAccount: async (provider: string) => {
+                set({ isLoading: true });
+                try {
+                    await api.post('/auth/social/disconnect/', { provider });
+                    await get().fetchSocialAccounts();
                 } finally {
                     set({ isLoading: false });
                 }

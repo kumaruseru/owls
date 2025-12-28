@@ -80,7 +80,7 @@ class Confirm2FAView(views.APIView):
 
 class Login2FAView(views.APIView):
     """
-    Step 2 of Login: Verify TOTP or Backup Code.
+    Step 2 of Login: Verify TOTP, Email OTP, or Backup Code.
     """
     permission_classes = [permissions.AllowAny]
     throttle_classes = [ScopedRateThrottle]
@@ -109,14 +109,22 @@ class Login2FAView(views.APIView):
         # Verify Credential
         is_valid = False
         
-        # 1. Try TOTP
+        # 1. Try TOTP or Email OTP (code field used for both)
         if code:
+            # Check which method user prefers or try both?
+            # Safer to try both or rely on what was expected.
+            # But here we just check valid logic.
+            
+            # Try TOTP first
             if TwoFactorService.verify_totp(user.two_factor_secret, code):
                 is_valid = True
+            # Try Email OTP
+            elif TwoFactorService.verify_email_otp(user, code):
+                is_valid = True
             else:
-                 return Response({"error": "Invalid TOTP code."}, status=status.HTTP_400_BAD_REQUEST)
+                 return Response({"error": "Invalid authentication code."}, status=status.HTTP_400_BAD_REQUEST)
         
-        # 2. Try Backup Code (if TOPT not used or failed - though above returns early)
+        # 2. Try Backup Code
         elif backup_code:
             if TwoFactorService.verify_backup_code(user, backup_code):
                 is_valid = True
@@ -132,6 +140,59 @@ class Login2FAView(views.APIView):
             })
             
         return Response({"error": "Authentication failed."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class Send2FAEmailView(views.APIView):
+    """
+    Request an Email OTP during login or setup.
+    """
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = '2fa_email'
+
+    def post(self, request):
+        temp_token = request.data.get('temp_token')
+        
+        if not temp_token:
+            return Response({"error": "temp_token is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        signer = TimestampSigner()
+        try:
+            user_id = signer.unsign(temp_token, max_age=300)
+            user = User.objects.get(id=user_id)
+        except (BadSignature, SignatureExpired, User.DoesNotExist):
+            return Response({"error": "Invalid session."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if TwoFactorService.generate_email_otp(user):
+            return Response({"message": "Email OTP sent successfully."})
+        
+        return Response({"error": "Failed to send email."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class BackupCodesView(views.APIView):
+    """
+    View or regenerate backup codes. Protected by password.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        password = request.data.get('password')
+        action = request.data.get('action', 'view') # view or regenerate
+
+        if not password or not request.user.check_password(password):
+             return Response({"error": "Invalid password."}, status=status.HTTP_400_BAD_REQUEST)
+             
+        if not request.user.is_2fa_enabled:
+            return Response({"error": "2FA is not enabled."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if action == 'regenerate':
+             backup_codes = TwoFactorService.generate_backup_codes()
+             request.user.backup_codes = backup_codes
+             request.user.save(update_fields=['backup_codes'])
+             return Response({"backup_codes": backup_codes, "message": "Backup codes regenerated."})
+        
+        # Default: view
+        return Response({"backup_codes": request.user.backup_codes})
 
 
 class Disable2FAView(views.APIView):

@@ -40,7 +40,8 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         # Use Custom Manager for cleaner logic
-        return Product.objects.active().with_effective_price().select_related('category').prefetch_related('images')
+        queryset = Product.objects.all() if self.request.user.is_staff else Product.objects.active()
+        return queryset.with_effective_price().select_related('category').prefetch_related('images')
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
