@@ -344,9 +344,15 @@ class MoMoService:
         }
         
         try:
+            logger.info(f"Sending MoMo request to {settings.MOMO_ENDPOINT}")
             response = requests.post(settings.MOMO_ENDPOINT, json=payload, timeout=30)
-            data = response.json()
             
+            try:
+                data = response.json()
+            except ValueError as e:
+                logger.error(f"MoMo JSON Decode Error. Status: {response.status_code}, Body: {response.text}")
+                return {'success': False, 'error': f"MoMo Gateway Error: {response.status_code} - Invalid Response"}
+
             if data.get('resultCode') == 0:
                 payment.payment_url = data.get('payUrl')
                 payment.transaction_id = request_id
